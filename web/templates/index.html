@@ -338,69 +338,76 @@
         Loading status...
     </div>
 
-    {% for property in properties %}
-    <div class="property {% if property.preference %}{{ property.preference.status }}{% endif %}" data-url="{{ property.original_url }}">
-        <div class="property-header">
-            <h2 class="title">
-                <a href="{{ property.original_url }}" target="_blank">{{ property.title }}</a>
-            </h2>
-            <div class="price">${{ '{:,.0f}'.format(property.total_price) if property.total_price else 0 }}</div>
-        </div>
-        <div class="main-content">
-            <div class="images-container">
-                <div class="images">
-                    {% for image in property.images %}
-                    <img src="{{ image.image_url }}" alt="Property Image">
-                    {% endfor %}
-                </div>
+    {% for location, properties in properties_by_location.items() %}
+    <div class="location-group mb-8">
+        <h2 class="text-xl font-semibold mb-4">{{ location }} ({{ properties|length }})</h2>
+        
+        {% for property in properties %}
+        <div class="property {% if property.preference %}{{ property.preference.status }}{% endif %}" data-url="{{ property.original_url }}">
+            <div class="property-header">
+                <h2 class="title">
+                    <a href="{{ property.original_url }}" target="_blank">{{ property.title }}</a>
+                </h2>
+                <div class="price">${{ property.total_price|format_number }}</div>
             </div>
-            {% if property.google_maps_link and property.map_coords %}
-            <div class="map-container">
-                <div class="map">
-                    <iframe
-                        src="https://www.google.com/maps?q={{ property.map_coords }}&z=12&output=embed"
-                        allowfullscreen=""
-                        loading="lazy"
-                        referrerpolicy="no-referrer-when-downgrade">
-                    </iframe>
+            <div class="main-content">
+                <div class="images-container">
+                    <div class="images">
+                        {% for image in property.images %}
+                        <img src="{{ image.image_url }}" alt="Property Image">
+                        {% endfor %}
+                    </div>
                 </div>
-            </div>
-            {% endif %}
-        </div>
-        <div class="attributes">
-            <div class="attribute"><strong>Rent:</strong> ${{ '{:,.0f}'.format(property.price) }}</div>
-            <div class="attribute"><strong>Common Costs:</strong> ${{ '{:,.0f}'.format(property.common_costs if property.common_costs else 0) }}</div>
-            <div class="attribute"><strong>Total Area:</strong> {{ property.total_area }}m²</div>
-            <div class="attribute"><strong>Floor:</strong> {{ property.floor }} of {{ property.total_floors }}</div>
-            <div class="attribute"><strong>Furnished:</strong> <span class="status-{{ 'yes' if property.furnished else 'no' }}">{{ 'Yes' if property.furnished else 'No' }}</span></div>
-            <div class="attribute"><strong>Gym:</strong> <span class="status-{{ 'yes' if property.has_gym else 'no' }}">{{ 'Yes' if property.has_gym else 'No' }}</span></div>
-            <div class="attribute metro-stations">
-                <strong>Metro Stations:</strong>
-                {% if property.metro_stations %}
-                <ul class="metro-list">
-                    {% for station in property.metro_stations %}
-                    <li class="metro-item">{{ station.name }} ({{ station.walking_minutes }} min)</li>
-                    {% endfor %}
-                </ul>
-                {% else %}
-                <p>No metro stations nearby</p>
+                {% if property.google_maps_link and property.map_coords %}
+                <div class="map-container">
+                    <div class="map">
+                        <iframe
+                            src="https://www.google.com/maps?q={{ property.map_coords }}&z=12&output=embed"
+                            allowfullscreen=""
+                            loading="lazy"
+                            referrerpolicy="no-referrer-when-downgrade">
+                        </iframe>
+                    </div>
+                </div>
                 {% endif %}
             </div>
+            <div class="attributes">
+                <div class="attribute"><strong>Rent:</strong> ${{ property.price|format_number }}</div>
+                <div class="attribute"><strong>Common Costs:</strong> ${{ property.common_costs|format_number if property.common_costs else 0 }}</div>
+                <div class="attribute"><strong>Total Area:</strong> {{ property.total_area }}m²</div>
+                <div class="attribute"><strong>Floor:</strong> {{ property.floor }} of {{ property.total_floors }}</div>
+                <div class="attribute"><strong>Furnished:</strong> <span class="status-{{ 'yes' if property.furnished else 'no' }}">{{ 'Yes' if property.furnished else 'No' }}</span></div>
+                <div class="attribute"><strong>Gym:</strong> <span class="status-{{ 'yes' if property.has_gym else 'no' }}">{{ 'Yes' if property.has_gym else 'No' }}</span></div>
+                <div class="attribute metro-stations">
+                    <strong>Metro Stations:</strong>
+                    {% if property.metro_stations %}
+                    <ul class="metro-list">
+                        {% for station in property.metro_stations %}
+                        <li class="metro-item">{{ station.name }} ({{ station.walking_minutes }} min)</li>
+                        {% endfor %}
+                    </ul>
+                    {% else %}
+                    <p>No metro stations nearby</p>
+                    {% endif %}
+                </div>
+                <div class="attribute"><strong>Added:</strong> {{ property.run.started_at.strftime('%Y-%m-%d %H:%M') }}</div>
+            </div>
+            <div class="property-actions">
+                <button class="action-button like-button {% if property.preference and property.preference.status == 'liked' %}active{% endif %}"
+                        onclick="setPreference('{{ property.original_url }}', 'liked')">
+                    Like
+                </button>
+                <button class="action-button dislike-button {% if property.preference and property.preference.status == 'disliked' %}active{% endif %}"
+                        onclick="setPreference('{{ property.original_url }}', 'disliked')">
+                    Dislike
+                </button>
+                <button class="action-button unseen-button {% if not property.preference %}active{% endif %}"
+                        onclick="removePreference('{{ property.original_url }}')">
+                    Unseen
+                </button>
+            </div>
         </div>
-        <div class="property-actions">
-            <button class="action-button like-button {% if property.preference and property.preference.status == 'liked' %}active{% endif %}"
-                    onclick="setPreference('{{ property.original_url }}', 'liked')">
-                Like
-            </button>
-            <button class="action-button dislike-button {% if property.preference and property.preference.status == 'disliked' %}active{% endif %}"
-                    onclick="setPreference('{{ property.original_url }}', 'disliked')">
-                Dislike
-            </button>
-            <button class="action-button unseen-button {% if not property.preference %}active{% endif %}"
-                    onclick="removePreference('{{ property.original_url }}')">
-                Unseen
-            </button>
-        </div>
+        {% endfor %}
     </div>
     {% endfor %}
 </body>

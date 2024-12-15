@@ -80,47 +80,27 @@ def status():
 @app.route('/')
 def index():
     run_id = request.args.get('run_id')
-    if run_id:
-        run = Run.query.get_or_404(run_id)
-    else:
-        run = Run.query.order_by(Run.started_at.desc()).first()
     
-    total_properties = Property.query.count()
-    total_runs = Run.query.count()
-    runs = Run.query.order_by(Run.started_at.desc()).all()
-    properties = Property.query.filter_by(run_id=run.id if run else None).all()
+    # Get all properties across all runs, ordered by newest first
+    properties = (
+        db.session.query(Property)
+        .join(Run)
+        .order_by(Run.started_at.desc())
+        .all()
+    )
+    
+    # Group properties by location
+    properties_by_location = {}
+    for prop in properties:
+        if prop.location not in properties_by_location:
+            properties_by_location[prop.location] = []
+        properties_by_location[prop.location].append(prop)
 
-    # Process Google Maps links
-    for property in properties:
-        if property.google_maps_link:
-            try:
-                if '@' in property.google_maps_link:
-                    coords = property.google_maps_link.split('@')[1].split(',')[:2]
-                else:
-                    coords = property.google_maps_link.split('ll=')[1].split('&')[0].split(',')
-                property.map_coords = ','.join(coords)
-            except:
-                property.map_coords = None
-    
-    # Get preferences for all properties
-    property_urls = [p.original_url for p in properties]
-    preferences = {p.property_url: p for p in PropertyPreference.query.filter(
-        PropertyPreference.property_url.in_(property_urls)
-    ).all()}
-    
-    # Attach preferences to properties
-    for property in properties:
-        property.preference = preferences.get(property.original_url)
-    
-    # Count unique properties by URL
-    total_unique_properties = db.session.query(Property.original_url).distinct().count()
-    
-    return render_template('index.html', 
-                         latest_run=run, 
-                         total_properties=total_unique_properties,
-                         total_runs=total_runs,
-                         runs=runs,
-                         properties=properties)
+    return render_template(
+        'index.html',
+        properties_by_location=properties_by_location,
+        total_properties=len(properties)
+    )
 
 @app.route('/property/preference', methods=['POST'])
 def set_preference():
@@ -155,6 +135,11 @@ def remove_preference():
         db.session.commit()
     
     return jsonify({'success': True})
+
+@app.template_filter('format_number')
+def format_number(value):
+    """Format number with thousands separator"""
+    return "{:,.0f}".format(value) if value else ""
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=3000) 

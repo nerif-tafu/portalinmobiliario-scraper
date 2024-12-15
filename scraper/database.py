@@ -30,6 +30,10 @@ def clean_area(area_str):
         print(f"Warning: Could not convert area '{area_str}' to float")
         return None
 
+def is_duplicate_listing(session, url):
+    """Check if a listing URL has been scraped before"""
+    return session.query(Property).filter(Property.original_url == url).first() is not None
+
 def save_properties(properties, run_id):
     """Save scraped properties to database"""
     if not properties:
@@ -42,9 +46,18 @@ def save_properties(properties, run_id):
         return []
 
     session = Session()
+    new_properties = []
+    skipped_count = 0
+
     try:
         for i, prop_data in enumerate(properties):
             try:
+                # Check if listing already exists
+                if is_duplicate_listing(session, prop_data.get('link', '')):
+                    print(f"Skipping duplicate listing: {prop_data.get('title', '')}")
+                    skipped_count += 1
+                    continue
+
                 # Create property
                 if not isinstance(prop_data, dict):
                     print(f"Error: property data must be a dict, got {type(prop_data)}")
@@ -88,6 +101,8 @@ def save_properties(properties, run_id):
                     )
                     session.add(station)
 
+                new_properties.append(property)
+
             except Exception as e:
                 print(f"Error processing property at index {i}:")
                 print(f"Property data: {prop_data}")
@@ -95,8 +110,8 @@ def save_properties(properties, run_id):
                 raise
 
         session.commit()
-        print(f"Successfully saved {len(properties)} properties to database")
-        return properties
+        print(f"Saved {len(new_properties)} new properties (skipped {skipped_count} duplicates)")
+        return new_properties
 
     except Exception as e:
         session.rollback()
