@@ -45,11 +45,6 @@ logger = setup_logger()
 
 def log_and_print(message, level='info', color=None):
     """Helper function to both log and print messages"""
-    # Only print to console, let logger handle file logging
-    if color:
-        print(f"{color}{message}{RESET}")
-    else:
-        print(message)
         
     # Log to file
     if level == 'info':
