@@ -9,22 +9,18 @@ from web.models import Run, Property, PropertyImage, MetroStation
 engine = create_engine(os.getenv('DATABASE_URL'))
 Session = sessionmaker(bind=engine)
 
-def save_properties(properties):
+def save_properties(properties, run_id):
     """Save scraped properties to database"""
+    if not properties:
+        print("No properties to save")
+        return
+
     session = Session()
     try:
-        # Create new run
-        run = Run(
-            started_at=datetime.utcnow(),
-            status='running'
-        )
-        session.add(run)
-        session.commit()
-
         for prop_data in properties:
             # Create property
             property = Property(
-                run_id=run.id,
+                run_id=run_id,
                 location=prop_data['location'],
                 title=prop_data['title'],
                 price=prop_data['price'],
@@ -54,24 +50,17 @@ def save_properties(properties):
                 station = MetroStation(
                     property_id=property.id,
                     name=station_data['name'],
-                    walking_minutes=int(station_data['walking_minutes']),
-                    distance_meters=int(station_data['distance_meters'])
+                    walking_minutes=station_data['walking_minutes'],
+                    distance_meters=station_data['distance_meters']
                 )
                 session.add(station)
 
-        # Update run status
-        run.status = 'completed'
-        run.completed_at = datetime.utcnow()
-        run.total_properties = len(properties)
         session.commit()
+        print(f"Successfully saved {len(properties)} properties to database")
 
     except Exception as e:
         session.rollback()
-        if run:
-            run.status = 'failed'
-            run.error_message = str(e)
-            run.completed_at = datetime.utcnow()
-            session.commit()
+        print(f"Error in save_properties: {str(e)}")
         raise
     finally:
         session.close() 

@@ -1,8 +1,8 @@
 from flask import Flask, render_template, jsonify, request
 from flask_admin import Admin
 from flask_admin.contrib.sqla import ModelView
-from web.models import db, Run, Property, PropertyImage, MetroStation
-from datetime import datetime
+from web.models import db, Run, Property, PropertyImage, MetroStation, PropertyPreference
+from datetime import datetime, timedelta
 from sqlalchemy import desc
 import os
 
@@ -51,31 +51,30 @@ admin.add_view(MetroStationView(MetroStation, db.session))
 
 @app.route('/status')
 def status():
-    # Get the latest run
     latest_run = Run.query.order_by(Run.started_at.desc()).first()
     
     if not latest_run:
         return jsonify({
             'status': 'No runs found',
-            'last_run': None,
-            'properties_count': 0
+            'message': 'No scraping runs yet'
         })
 
-    # Calculate time since last run
-    time_since = datetime.utcnow() - latest_run.started_at
-    minutes_since = int(time_since.total_seconds() / 60)
+    if latest_run.status == 'running':
+        started_minutes_ago = int((datetime.utcnow() - latest_run.started_at).total_seconds() / 60)
+        message = f"In progress - started {started_minutes_ago} minutes ago"
+    elif latest_run.status == 'failed':
+        message = f"Failed - {latest_run.error_message}"
+    else:  # completed
+        if latest_run.next_run_at:
+            next_run_str = latest_run.next_run_at.strftime('%Y-%m-%d %H:%M:%S')
+            message = f"Waiting - next run at {next_run_str}"
+        else:
+            # Fallback for runs before we added next_run_at
+            message = "Waiting for next run"
 
     return jsonify({
         'status': latest_run.status,
-        'last_run': {
-            'id': latest_run.id,
-            'started_at': latest_run.started_at.isoformat(),
-            'completed_at': latest_run.completed_at.isoformat() if latest_run.completed_at else None,
-            'minutes_ago': minutes_since,
-            'total_properties': latest_run.total_properties,
-            'error_message': latest_run.error_message
-        },
-        'properties_count': Property.query.count()
+        'message': message
     })
 
 @app.route('/')
@@ -103,12 +102,59 @@ def index():
             except:
                 property.map_coords = None
     
+    # Get preferences for all properties
+    property_urls = [p.original_url for p in properties]
+    preferences = {p.property_url: p for p in PropertyPreference.query.filter(
+        PropertyPreference.property_url.in_(property_urls)
+    ).all()}
+    
+    # Attach preferences to properties
+    for property in properties:
+        property.preference = preferences.get(property.original_url)
+    
+    # Count unique properties by URL
+    total_unique_properties = db.session.query(Property.original_url).distinct().count()
+    
     return render_template('index.html', 
                          latest_run=run, 
-                         total_properties=total_properties,
+                         total_properties=total_unique_properties,
                          total_runs=total_runs,
                          runs=runs,
                          properties=properties)
+
+@app.route('/property/preference', methods=['POST'])
+def set_preference():
+    data = request.json
+    property_url = data.get('property_url')
+    status = data.get('status')
+    
+    if not property_url or status not in ['liked', 'disliked']:
+        return jsonify({'success': False, 'error': 'Invalid data'}), 400
+    
+    preference = PropertyPreference.query.filter_by(property_url=property_url).first()
+    if preference:
+        preference.status = status
+    else:
+        preference = PropertyPreference(property_url=property_url, status=status)
+        db.session.add(preference)
+    
+    db.session.commit()
+    return jsonify({'success': True})
+
+@app.route('/property/preference', methods=['DELETE'])
+def remove_preference():
+    data = request.json
+    property_url = data.get('property_url')
+    
+    if not property_url:
+        return jsonify({'success': False, 'error': 'Invalid data'}), 400
+    
+    preference = PropertyPreference.query.filter_by(property_url=property_url).first()
+    if preference:
+        db.session.delete(preference)
+        db.session.commit()
+    
+    return jsonify({'success': True})
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=3000) 

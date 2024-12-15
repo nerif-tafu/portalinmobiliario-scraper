@@ -20,6 +20,6 @@ echo "PostgreSQL started"
 # Wait for web service to initialize database
 sleep 5
 
-# Run the scraper
+# Run the scraper with unbuffered output
 cd /app
-python -m scraper.scraper 
+exec python -u -m scraper.scraper 

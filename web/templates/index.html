@@ -67,6 +67,15 @@
             padding: 15px; 
             margin-bottom: 20px;
             border-radius: 8px;
+            transition: background-color 0.3s ease;
+        }
+        .property.liked {
+            background-color: #e8f5e9;
+            border-color: #4caf50;
+        }
+        .property.disliked {
+            background-color: #ffebee;
+            border-color: #f44336;
         }
         .property-header {
             margin-bottom: 15px;
@@ -144,6 +153,57 @@
             border-radius: 4px;
             font-size: 0.9em;
         }
+        .property-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        .action-button {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+        .action-button:hover {
+            opacity: 0.8;
+        }
+        .like-button {
+            background-color: #4caf50;
+            color: white;
+        }
+        .dislike-button {
+            background-color: #f44336;
+            color: white;
+        }
+        .unseen-button {
+            background-color: #9e9e9e;
+            color: white;
+        }
+        .action-button.active {
+            opacity: 1;
+            box-shadow: 0 0 0 2px #fff, 0 0 0 4px currentColor;
+        }
+        .filter-buttons {
+            display: flex;
+            gap: 10px;
+        }
+        .filter-button {
+            padding: 8px 16px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            background: white;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .filter-button.active {
+            background: #2c5282;
+            color: white;
+            border-color: #2c5282;
+        }
+        .property.hidden {
+            display: none;
+        }
     </style>
     <script>
         function updateStatus() {
@@ -151,26 +211,7 @@
                 .then(response => response.json())
                 .then(data => {
                     const statusDiv = document.getElementById('status');
-                    let html = `
-                        <h2>Current Status: ${data.status}</h2>
-                        <p>Total Properties: ${data.properties_count}</p>
-                    `;
-                    
-                    if (data.last_run) {
-                        html += `
-                            <p>Last Run (#${data.last_run.id}):</p>
-                            <ul>
-                                <li>Started: ${new Date(data.last_run.started_at).toLocaleString()}</li>
-                                <li>Properties Found: ${data.last_run.total_properties || 0}</li>
-                                <li>Minutes Ago: ${data.last_run.minutes_ago}</li>
-                            </ul>
-                        `;
-                        
-                        if (data.last_run.error_message) {
-                            html += `<p class="error">Error: ${data.last_run.error_message}</p>`;
-                        }
-                    }
-                    
+                    const html = `<h2>Status: ${data.message}</h2>`;
                     statusDiv.innerHTML = html;
                     statusDiv.className = `status ${data.status.toLowerCase()}`;
                 });
@@ -182,6 +223,70 @@
             if (runId) {
                 window.location.href = `/?run_id=${runId}`;
             }
+        }
+
+        function setPreference(propertyUrl, status) {
+            fetch('/property/preference', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    property_url: propertyUrl,
+                    status: status
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    const propertyDiv = document.querySelector(`.property[data-url="${propertyUrl}"]`);
+                    propertyDiv.classList.remove('liked', 'disliked');
+                    propertyDiv.classList.add(status);
+                    
+                    // Update buttons
+                    const buttons = propertyDiv.querySelectorAll('.action-button');
+                    buttons.forEach(btn => btn.classList.remove('active'));
+                    propertyDiv.querySelector(`.${status}-button`).classList.add('active');
+                }
+            });
+        }
+
+        function removePreference(propertyUrl) {
+            fetch('/property/preference', {
+                method: 'DELETE',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    property_url: propertyUrl
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    const propertyDiv = document.querySelector(`.property[data-url="${propertyUrl}"]`);
+                    propertyDiv.classList.remove('liked', 'disliked');
+                    
+                    // Update buttons
+                    const buttons = propertyDiv.querySelectorAll('.action-button');
+                    buttons.forEach(btn => btn.classList.remove('active'));
+                    propertyDiv.querySelector('.unseen-button').classList.add('active');
+                }
+            });
+        }
+
+        function toggleFilter(type) {
+            const button = document.getElementById(`hide-${type}`);
+            button.classList.toggle('active');
+            
+            const properties = document.querySelectorAll('.property');
+            properties.forEach(property => {
+                if (type === 'unseen' && !property.classList.contains('liked') && !property.classList.contains('disliked')) {
+                    property.classList.toggle('hidden', button.classList.contains('active'));
+                } else if (property.classList.contains(type)) {
+                    property.classList.toggle('hidden', button.classList.contains('active'));
+                }
+            });
         }
 
         // Update status every 30 seconds
@@ -204,6 +309,17 @@
                 {% endfor %}
             </select>
         </div>
+        <div class="filter-buttons">
+            <button class="filter-button" onclick="toggleFilter('liked')" id="hide-liked">
+                Hide Liked
+            </button>
+            <button class="filter-button" onclick="toggleFilter('disliked')" id="hide-disliked">
+                Hide Disliked
+            </button>
+            <button class="filter-button" onclick="toggleFilter('unseen')" id="hide-unseen">
+                Hide Unseen
+            </button>
+        </div>
         <a href="/admin">Admin</a>
     </div>
 
@@ -223,7 +339,7 @@
     </div>
 
     {% for property in properties %}
-    <div class="property">
+    <div class="property {% if property.preference %}{{ property.preference.status }}{% endif %}" data-url="{{ property.original_url }}">
         <div class="property-header">
             <h2 class="title">
                 <a href="{{ property.original_url }}" target="_blank">{{ property.title }}</a>
@@ -270,6 +386,20 @@
                 <p>No metro stations nearby</p>
                 {% endif %}
             </div>
+        </div>
+        <div class="property-actions">
+            <button class="action-button like-button {% if property.preference and property.preference.status == 'liked' %}active{% endif %}"
+                    onclick="setPreference('{{ property.original_url }}', 'liked')">
+                Like
+            </button>
+            <button class="action-button dislike-button {% if property.preference and property.preference.status == 'disliked' %}active{% endif %}"
+                    onclick="setPreference('{{ property.original_url }}', 'disliked')">
+                Dislike
+            </button>
+            <button class="action-button unseen-button {% if not property.preference %}active{% endif %}"
+                    onclick="removePreference('{{ property.original_url }}')">
+                Unseen
+            </button>
         </div>
     </div>
     {% endfor %}

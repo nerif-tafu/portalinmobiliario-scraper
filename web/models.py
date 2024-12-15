@@ -9,6 +9,7 @@ class Run(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     started_at = db.Column(db.DateTime, nullable=False)
     completed_at = db.Column(db.DateTime)
+    next_run_at = db.Column(db.DateTime)
     status = db.Column(db.String(20), nullable=False)
     total_properties = db.Column(db.Integer)
     error_message = db.Column(db.Text)
@@ -64,3 +65,11 @@ class MetroStation(db.Model):
 
     def __str__(self):
         return f"{self.name} ({self.walking_minutes} min)" 
+
+class PropertyPreference(db.Model):
+    __tablename__ = 'property_preferences'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    property_url = db.Column(db.Text, nullable=False, unique=True)
+    status = db.Column(db.String(10), nullable=False)  # 'liked', 'disliked'
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow) 

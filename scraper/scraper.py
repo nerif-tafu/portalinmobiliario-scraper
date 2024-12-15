@@ -26,6 +26,9 @@ from scraper.config import (
 )
 from urllib.parse import urlencode, urlparse, parse_qs
 from scraper.database import save_properties
+from web.models import db, Run  # Add this import
+from web.app import app  # Import the Flask app
+from datetime import timedelta
 
 # At the top of the file, add these color constants
 ORANGE = '\033[93m'
@@ -761,21 +764,49 @@ if __name__ == "__main__":
         try:
             print(f"\nStarting new scraping run at {datetime.datetime.now()}")
             
-            # Get properties using configuration settings
-            properties = scrape_properties()
-            
-            if not properties:
-                print("No properties were scraped!")
-            else:
-                # Save to database
+            # Use Flask app context
+            with app.app_context():
+                # Create a new run with 'running' status
+                run = Run(
+                    started_at=datetime.datetime.utcnow(),
+                    status='running'
+                )
+                db.session.add(run)
+                db.session.commit()
+                
                 try:
-                    save_properties(properties)
-                    print(f"\nSuccessfully scraped and saved {len(properties)} total properties")
+                    # Get properties using configuration settings
+                    properties = scrape_properties()
+                    
+                    if not properties:
+                        print("No properties were scraped!")
+                        run.status = 'completed'
+                        run.total_properties = 0
+                    else:
+                        # Save to database
+                        try:
+                            save_properties(properties, run.id)
+                            run.status = 'completed'
+                            run.total_properties = len(properties)
+                            print(f"\nSuccessfully scraped and saved {len(properties)} total properties")
+                        except Exception as e:
+                            print(f"Error saving to database: {str(e)}")
+                            run.status = 'failed'
+                            run.error_message = f"Database error: {str(e)}"
+                            properties = []  # Clear properties on error
                 except Exception as e:
-                    print(f"Error saving to database: {str(e)}")
+                    print(f"Error during scraping: {str(e)}")
+                    run.status = 'failed'
+                    run.error_message = f"Scraping error: {str(e)}"
+                    properties = []  # Clear properties on error
+                
+                # Update run completion time and next run time
+                run.completed_at = datetime.datetime.utcnow()
+                run.next_run_at = run.completed_at + timedelta(seconds=SCRAPE_INTERVAL)
+                db.session.commit()
+            
+            print(f"\nSleeping for {SCRAPE_INTERVAL} seconds...")
+            time.sleep(SCRAPE_INTERVAL)
             
         except Exception as e:
-            print(f"Error during scraping: {str(e)}")
-        
-        print(f"\nSleeping for {SCRAPE_INTERVAL} seconds...")
-        time.sleep(SCRAPE_INTERVAL)
+            print(f"Critical error: {str(e)}")
