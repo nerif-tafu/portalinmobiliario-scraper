@@ -28,10 +28,30 @@ from scraper.database import save_properties
 from web.models import db, Run  # Add this import
 from web.app import app  # Import the Flask app
 from datetime import timedelta
+from scraper.utils import setup_logger
 
 # At the top of the file, add these color constants
 ORANGE = '\033[93m'
 RESET = '\033[0m'
+
+# At the start of the file
+logger = setup_logger()
+
+def log_and_print(message, level='info', color=None):
+    """Helper function to both log and print messages"""
+    if color:
+        print(f"{color}{message}{RESET}")
+    else:
+        print(message)
+        
+    if level == 'info':
+        logger.info(message)
+    elif level == 'warning':
+        logger.warning(message)
+    elif level == 'error':
+        logger.error(message)
+    elif level == 'debug':
+        logger.debug(message)
 
 def get_uf_value():
     try:
@@ -39,7 +59,7 @@ def get_uf_value():
         data = response.json()
         return data['uf']['valor']
     except Exception as e:
-        print(f"Error fetching UF value: {e}")
+        log_and_print(f"Error fetching UF value: {e}", level='error')
         return None
 
 def wait_for_page_load(driver):
@@ -48,7 +68,7 @@ def wait_for_page_load(driver):
             lambda driver: driver.execute_script('return document.readyState') == 'complete'
         )
     except TimeoutException:
-        print("Page load timeout")
+        log_and_print("Page load timeout", level='warning')
 
 def get_element_safely(driver, element, by, selector):
     """Safely get an element with retries for stale elements"""
@@ -95,10 +115,10 @@ def convert_price_to_clp(price_element):
             # If it's already in CLP, just return the amount
             return int(amount)
         else:
-            print(f"Unknown currency symbol: {currency_symbol}")
+            log_and_print(f"Unknown currency symbol: {currency_symbol}", level='warning')
             return None
     except Exception as e:
-        print(f"Error converting price: {e}")
+        log_and_print(f"Error converting price: {e}", level='error')
         return None
 
 def extract_listing_details(driver, url, price):
@@ -126,7 +146,7 @@ def extract_listing_details(driver, url, price):
                 # Load the page
                 clean_base_url = clean_url(url)
                 random_param = f"?t={int(time.time())}&r={random.random()}"
-                print("Getting", clean_base_url + random_param)
+                log_and_print("Getting", clean_base_url + random_param)
                 driver.get(clean_base_url + random_param)
                 
                 # Wait for main container
@@ -142,7 +162,7 @@ def extract_listing_details(driver, url, price):
             except TimeoutException:
                 attempts += 1
                 wait_time = min(300, (2 ** attempts) * 60 + random.uniform(1, 30))
-                print(f"Rate limited, attempt {attempts}/{max_attempts}, waiting {int(wait_time)} seconds")
+                log_and_print(f"Rate limited, attempt {attempts}/{max_attempts}, waiting {int(wait_time)} seconds")
                 time.sleep(wait_time)
         
         if currently_rate_limited:
@@ -170,7 +190,7 @@ def extract_listing_details(driver, url, price):
             images = driver.find_elements(By.CSS_SELECTOR, ".ui-pdp-image.ui-pdp-gallery__figure__image")
             details['images'] = [img.get_attribute('src') for img in images if img.get_attribute('src')]
         except Exception as e:
-            print(f"Error getting images: {e}")
+            log_and_print(f"Error getting images: {e}", level='error')
 
         # Get specifications from the tables
         try:
@@ -196,18 +216,18 @@ def extract_listing_details(driver, url, price):
                     if len(rows) > 0:
                         tables_found = True
                     else:
-                        print(f"Tables found but no rows present. Attempt {refresh_attempts + 1}/{max_refresh_attempts}")
+                        log_and_print(f"Tables found but no rows present. Attempt {refresh_attempts + 1}/{max_refresh_attempts}")
                         driver.refresh()
                         time.sleep(random.uniform(2, 4))
                         refresh_attempts += 1
                 except TimeoutException:
-                    print(f"Tables not found. Attempting refresh. Attempt {refresh_attempts + 1}/{max_refresh_attempts}")
+                    log_and_print(f"Tables not found. Attempting refresh. Attempt {refresh_attempts + 1}/{max_refresh_attempts}")
                     driver.refresh()
                     time.sleep(random.uniform(2, 4))
                     refresh_attempts += 1
 
             if not tables_found:
-                print(f"{ORANGE}Warning: Failed to load tables after all refresh attempts{RESET}")
+                log_and_print(f"{ORANGE}Warning: Failed to load tables after all refresh attempts{RESET}", level='warning')
                 return None
 
             # Process the tables as before
@@ -232,22 +252,22 @@ def extract_listing_details(driver, url, price):
                     if header in mapping:
                         key, val = mapping[header]
                         if val is None or val == "":
-                            print(f"{ORANGE}Warning: Skipping empty value for {key}{RESET}")
+                            log_and_print(f"{ORANGE}Warning: Skipping empty value for {key}{RESET}", level='warning')
                         details[key] = val
 
                 except Exception as e:
-                    print(f"{ORANGE}Warning: Error processing row: {str(e)}{RESET}")
+                    log_and_print(f"{ORANGE}Warning: Error processing row: {str(e)}{RESET}", level='warning')
                     continue
 
         except Exception as e:
-            print(f"Error getting specifications: {str(e)}")
+            log_and_print(f"Error getting specifications: {str(e)}", level='error')
             time.sleep(1000)
 
         try:
             metro_station = driver.find_element(By.CSS_SELECTOR, ".andes-tab-content.ui-vip-poi__tab-content")
             metro_station_holder = metro_station.find_element(By.XPATH, ".//*[text()='Estaciones de metro']")
             if metro_station_holder is None:
-                print("No metro station found")
+                log_and_print("No metro station found")
                 return details
             metro_station_holder_parent = metro_station_holder.find_element(By.XPATH, "./..")
             metro_station_list = metro_station_holder_parent.find_elements(By.CSS_SELECTOR, ".ui-vip-poi__item")
@@ -270,31 +290,34 @@ def extract_listing_details(driver, url, price):
                     'distance_meters': distance_meters
                 })
             details['metro_station'] = all_metro_stations
-            print("Found metro station", details['metro_station'])
+            log_and_print(f"Found metro station {details['metro_station']}")
 
         except NoSuchElementException:
-            print(f"No metro stations found.")
+            log_and_print("No metro stations found.")
 
         except Exception as e:
-            print(f"Error getting metro station: {str(e)}")
+            log_and_print(f"Error getting metro station: {str(e)}", 
+                          level='error', 
+                          color=ORANGE)
 
         # Get common costs from div
         try:
             common_costs = driver.find_element(By.CSS_SELECTOR, ".ui-pdp-color--GRAY.ui-pdp-size--XSMALL.ui-pdp-family--REGULAR.ui-pdp-maintenance-fee-ltr")
             common_costs_text = common_costs.text.strip()
             common_costs_text = common_costs_text.replace("Gastos comunes aproximados $", "")
+            common_costs_text = common_costs_text.replace("Gastos comunes desde $", "")
             common_costs_text = common_costs_text.replace(".", "")
             common_costs_text = common_costs_text.replace(",", ".")
             common_costs_text = common_costs_text.strip()
 
             details['common_costs'] = int(common_costs_text)
-            print("Found common costs", details['common_costs'])
+            log_and_print("Found common costs", details['common_costs'])
 
         except NoSuchElementException:
-            print("No common costs found")
+            log_and_print("No common costs found")
 
         except Exception as e:
-            print(f"Error getting common costs: {str(e)}")
+            log_and_print(f"Error getting common costs: {str(e)}", level='error')
 
 
         # Get description
@@ -302,7 +325,7 @@ def extract_listing_details(driver, url, price):
             description = driver.find_element(By.CSS_SELECTOR, ".ui-pdp-description__content").text.strip()
             details['description'] = description
         except Exception as e:
-            print(f"Error getting description: {str(e)}")
+            log_and_print(f"Error getting description: {str(e)}", level='error')
 
 
         # Get address information
@@ -329,14 +352,14 @@ def extract_listing_details(driver, url, price):
             
             details['full_address'] = address
             details['google_maps_link'] = maps_link
-            print(f"Found address: {address}")
-            print(f"Found maps link: {maps_link}")
+            log_and_print(f"Found address: {address}")
+            log_and_print(f"Found maps link: {maps_link}")
         except Exception as e:
-            print(f"Error getting address: {str(e)}")
+            log_and_print(f"Error getting address: {str(e)}", level='error')
             details['full_address'] = None
             details['google_maps_link'] = None
 
-        print("Calculating total price", price, details['common_costs'])
+        log_and_print("Calculating total price", price, details['common_costs'])
         if price is not None:
             details['total_price'] = price + (details['common_costs'] if details['common_costs'] is not None else 0)
         else:
@@ -345,12 +368,14 @@ def extract_listing_details(driver, url, price):
         # Before returning
         missing_fields = [k for k, v in details.items() if v is None]
         if missing_fields:
-            print(f"{ORANGE}Warning: Missing fields in final details: {', '.join(missing_fields)}{RESET}")
+            log_and_print(f"Warning: Missing fields in final details: {', '.join(missing_fields)}", 
+                          level='warning', 
+                          color=ORANGE)
 
         return details
     
     except Exception as e:
-        print(f"{ORANGE}Warning: Error processing listing: {str(e)}{RESET}")
+        log_and_print(f"{ORANGE}Warning: Error processing listing: {str(e)}{RESET}", level='warning')
         return None
 
 def scrape_location(driver, location):
@@ -364,7 +389,7 @@ def scrape_location(driver, location):
             break
             
         url = get_url_for_location(location, page * 48)  # 48 is Portal Inmobiliario's page size
-        print(f"\nScraping page {page + 1} (offset: {page * 48})")
+        log_and_print(f"\nScraping page {page + 1} (offset: {page * 48})")
         
         driver.get(url)
         wait_for_page_load(driver)
@@ -375,10 +400,10 @@ def scrape_location(driver, location):
         )
         
         if not listings:
-            print("No listings found on this page. Stopping.")
+            log_and_print("No listings found on this page. Stopping.", level='warning')
             break
 
-        print(f"Found {len(listings)} listings on page {page + 1}")
+        log_and_print(f"Found {len(listings)} listings on page {page + 1}")
         
         # Limit listings per page if configured
         if LISTINGS_PER_PAGE:
@@ -390,13 +415,13 @@ def scrape_location(driver, location):
                 property_data = process_listing(driver, listing, location)
                 if property_data:
                     properties.append(property_data)
-                    print(f"Successfully processed listing: {property_data['title']} ({i}/{len(listings)} for {location})")
+                    log_and_print(f"Successfully processed listing: {property_data['title']} ({i}/{len(listings)} for {location})")
             except Exception as e:
-                print(f"Error processing listing: {str(e)}")
+                log_and_print(f"Error processing listing: {str(e)}", level='error')
                 
         page += 1
             
-    print(f"Completed scraping {location}: {len(properties)} properties found")
+    log_and_print(f"Completed scraping {location}: {len(properties)} properties found")
     return properties
 
 def scrape_properties():
@@ -421,17 +446,17 @@ def scrape_properties():
 
     try:
         for location in LOCATIONS:
-            print(f"\nScraping location: {location}")
+            log_and_print(f"\nScraping location: {location}")
             current_offset = 0
             location_properties_count = 0
 
             for page in range(MAX_PAGES_PER_LOCATION):
                 if location_properties_count >= LISTINGS_PER_PAGE:
-                    print(f"\nReached listings limit of {LISTINGS_PER_PAGE} for {location}")
+                    log_and_print(f"\nReached listings limit of {LISTINGS_PER_PAGE} for {location}")
                     break
 
                 url = get_url_for_location(location, current_offset)
-                print(f"\nScraping page {page + 1} (offset: {current_offset})")
+                log_and_print(f"\nScraping page {page + 1} (offset: {current_offset})")
                 
                 # Store the links and titles first
                 listing_data = []
@@ -451,13 +476,13 @@ def scrape_properties():
                     )
 
                     if not listings:
-                        print("No listings found on this page. Stopping.")
+                        log_and_print("No listings found on this page. Stopping.", level='warning')
                         break
 
                     if LISTINGS_PER_PAGE:
                         listings = listings[:LISTINGS_PER_PAGE]
 
-                    print(f"Found {len(listings)} listings on page {page + 1}")
+                    log_and_print(f"Found {len(listings)} listings on page {page + 1}")
 
                     # First pass: collect all the necessary data from the listing preview
                     for listing in listings:
@@ -484,7 +509,7 @@ def scrape_properties():
                             })
                             
                         except Exception as e:
-                            print(f"Error collecting listing preview data: {str(e)}")
+                            log_and_print(f"Error collecting listing preview data: {str(e)}", level='error')
                             continue
 
                     # Second pass: visit each listing page
@@ -504,19 +529,19 @@ def scrape_properties():
                                 }
                                 all_properties.append(combined_property)
                                 location_properties_count += 1
-                                print(f"Successfully processed listing: {data['title']} ({location_properties_count}/{LISTINGS_PER_PAGE} for {location})")
+                                log_and_print(f"Successfully processed listing: {data['title']} ({location_properties_count}/{LISTINGS_PER_PAGE} for {location})")
 
                         except Exception as e:
-                            print(f"Error processing listing details: {str(e)}")
+                            log_and_print(f"Error processing listing details: {str(e)}", level='error')
                             continue
 
                     current_offset += LISTINGS_PER_PAGE
 
                 except TimeoutException:
-                    print(f"Timeout waiting for listings on page {page + 1}")
+                    log_and_print(f"Timeout waiting for listings on page {page + 1}", level='warning')
                     continue
 
-            print(f"Completed scraping {location}: {location_properties_count} properties found")
+            log_and_print(f"Completed scraping {location}: {location_properties_count} properties found")
 
         return all_properties
 
@@ -796,18 +821,18 @@ def perform_random_interactions(driver):
             time.sleep(random.uniform(0.5, 2))
             
     except Exception as e:
-        print(f"Error during random interactions: {e}")
+        log_and_print(f"Error during random interactions: {e}", level='error')
 
 if __name__ == "__main__":
     from scraper.database import save_properties
     import time
     
     SCRAPE_INTERVAL = int(os.getenv('SCRAPE_INTERVAL', 3600))  # Default to 1 hour if not set
-    print(f"Starting scraper with {SCRAPE_INTERVAL} seconds interval")
+    log_and_print(f"Starting scraper with {SCRAPE_INTERVAL} seconds interval")
     
     while True:
         try:
-            print(f"\nStarting new scraping run at {datetime.datetime.now()}")
+            log_and_print(f"\nStarting new scraping run at {datetime.datetime.now()}")
             
             # Use Flask app context
             with app.app_context():
@@ -824,7 +849,7 @@ if __name__ == "__main__":
                     properties = scrape_properties()
                     
                     if not properties:
-                        print("No properties were scraped!")
+                        log_and_print("No properties were scraped!", level='warning')
                         run.status = 'completed'
                         run.total_properties = 0
                     else:
@@ -833,14 +858,14 @@ if __name__ == "__main__":
                             save_properties(properties, run.id)
                             run.status = 'completed'
                             run.total_properties = len(properties)
-                            print(f"\nSuccessfully scraped and saved {len(properties)} total properties")
+                            log_and_print(f"\nSuccessfully scraped and saved {len(properties)} total properties")
                         except Exception as e:
-                            print(f"Error saving to database: {str(e)}")
+                            log_and_print(f"Error saving to database: {str(e)}", level='error')
                             run.status = 'failed'
                             run.error_message = f"Database error: {str(e)}"
                             properties = []  # Clear properties on error
                 except Exception as e:
-                    print(f"Error during scraping: {str(e)}")
+                    log_and_print(f"Error during scraping: {str(e)}", level='error')
                     run.status = 'failed'
                     run.error_message = f"Scraping error: {str(e)}"
                     properties = []  # Clear properties on error
@@ -850,8 +875,8 @@ if __name__ == "__main__":
                 run.next_run_at = run.completed_at + timedelta(seconds=SCRAPE_INTERVAL)
                 db.session.commit()
             
-            print(f"\nSleeping for {SCRAPE_INTERVAL} seconds...")
+            log_and_print(f"\nSleeping for {SCRAPE_INTERVAL} seconds...")
             time.sleep(SCRAPE_INTERVAL)
             
         except Exception as e:
-            print(f"Critical error: {str(e)}")
+            log_and_print(f"Critical error: {str(e)}", level='error')

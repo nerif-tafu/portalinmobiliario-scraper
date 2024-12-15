@@ -9,6 +9,27 @@ from web.models import Run, Property, PropertyImage, MetroStation
 engine = create_engine(os.getenv('DATABASE_URL'))
 Session = sessionmaker(bind=engine)
 
+def clean_area(area_str):
+    """Clean and convert area string to float"""
+    if not area_str:
+        return None
+        
+    try:
+        # Remove any non-numeric characters except decimal point
+        area_str = area_str.strip()
+        
+        # If it's a range, take the first number
+        if ' a ' in area_str:
+            area_str = area_str.split(' a ')[0]
+            
+        # Remove any remaining non-numeric chars except decimal
+        clean_str = ''.join(c for c in area_str if c.isdigit() or c == '.')
+        return float(clean_str) if clean_str else None
+        
+    except (ValueError, TypeError):
+        print(f"Warning: Could not convert area '{area_str}' to float")
+        return None
+
 def save_properties(properties, run_id):
     """Save scraped properties to database"""
     if not properties:
@@ -37,7 +58,7 @@ def save_properties(properties, run_id):
                     price=prop_data.get('price', 0),
                     common_costs=prop_data.get('common_costs'),
                     total_price=prop_data.get('total_price'),
-                    total_area=float(prop_data['total_area']) if prop_data.get('total_area') else None,
+                    total_area=clean_area(prop_data.get('total_area')),  # Use clean_area function
                     floor=prop_data.get('floor'),
                     total_floors=prop_data.get('total_floors'),
                     furnished=prop_data.get('furnished'),

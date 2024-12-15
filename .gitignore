@@ -175,3 +175,7 @@ ENV/
 # Scraped Data
 scraped-data/*
 !scraped-data/.gitkeep
+
+# Logs
+logs/
+*.log
