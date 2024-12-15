@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Property Scraper</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        .running { background: #e3f2fd; }
+        .completed { background: #e8f5e9; }
+        .failed { background: #ffebee; }
+        .nav {
+            margin: 20px 0;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+        .nav a {
+            color: #2c5282;
+            text-decoration: none;
+        }
+        .nav a:hover {
+            text-decoration: underline;
+        }
+        .run-selector {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        select {
+            padding: 8px;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+            min-width: 200px;
+        }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 10px;
+            margin: 20px 0;
+        }
+        .stat-card {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 4px;
+            text-align: center;
+        }
+        .stat-value {
+            font-size: 1.5em;
+            font-weight: bold;
+            color: #2c5282;
+        }
+        /* Property styles */
+        .property { 
+            border: 1px solid #ccc; 
+            padding: 15px; 
+            margin-bottom: 20px;
+            border-radius: 8px;
+        }
+        .property-header {
+            margin-bottom: 15px;
+        }
+        .title { 
+            margin: 0;
+            font-size: 1.5em;
+        }
+        .title a {
+            color: inherit;
+            text-decoration: none;
+        }
+        .title a:hover {
+            color: #2c5282;
+            text-decoration: underline;
+        }
+        .main-content {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 15px;
+        }
+        .images-container {
+            flex: 1;
+            max-width: 50%;
+        }
+        .images { 
+            display: flex;
+            gap: 10px;
+            overflow-x: auto;
+            margin: 0;
+            max-height: 300px;
+        }
+        .images img { 
+            height: 300px;
+            width: auto;
+            object-fit: cover;
+        }
+        .map-container {
+            flex: 1;
+        }
+        .map { 
+            height: 300px;
+        }
+        .map iframe { 
+            width: 100%;
+            height: 100%;
+            border: 0;
+        }
+        .attributes {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 10px;
+            margin: 10px 0;
+            color: #666;
+        }
+        .attribute {
+            padding: 8px;
+            background: #f5f5f5;
+            border-radius: 4px;
+        }
+        .metro-stations {
+            grid-column: 1 / -1;
+        }
+        .metro-list {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin: 5px 0;
+            padding: 0;
+            list-style: none;
+        }
+        .metro-item {
+            background: #e9ecef;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 0.9em;
+        }
+    </style>
+    <script>
+        function updateStatus() {
+            fetch('/status')
+                .then(response => response.json())
+                .then(data => {
+                    const statusDiv = document.getElementById('status');
+                    let html = `
+                        <h2>Current Status: ${data.status}</h2>
+                        <p>Total Properties: ${data.properties_count}</p>
+                    `;
+                    
+                    if (data.last_run) {
+                        html += `
+                            <p>Last Run (#${data.last_run.id}):</p>
+                            <ul>
+                                <li>Started: ${new Date(data.last_run.started_at).toLocaleString()}</li>
+                                <li>Properties Found: ${data.last_run.total_properties || 0}</li>
+                                <li>Minutes Ago: ${data.last_run.minutes_ago}</li>
+                            </ul>
+                        `;
+                        
+                        if (data.last_run.error_message) {
+                            html += `<p class="error">Error: ${data.last_run.error_message}</p>`;
+                        }
+                    }
+                    
+                    statusDiv.innerHTML = html;
+                    statusDiv.className = `status ${data.status.toLowerCase()}`;
+                });
+        }
+
+        function goToRun() {
+            const select = document.getElementById('run-select');
+            const runId = select.value;
+            if (runId) {
+                window.location.href = `/?run_id=${runId}`;
+            }
+        }
+
+        // Update status every 30 seconds
+        setInterval(updateStatus, 30000);
+        updateStatus();
+    </script>
+</head>
+<body>
+    <h1>Property Scraper</h1>
+    
+    <div class="nav">
+        <div class="run-selector">
+            <label for="run-select">View Run:</label>
+            <select id="run-select" onchange="goToRun()">
+                <option value="">Select a run...</option>
+                {% for run in runs %}
+                <option value="{{ run.id }}" {% if run.id == latest_run.id %}selected{% endif %}>
+                    Run #{{ run.id }} ({{ run.started_at.strftime('%Y-%m-%d %H:%M') }}) - {{ run.total_properties or 0 }} properties
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+        <a href="/admin">Admin</a>
+    </div>
+
+    <div class="stats">
+        <div class="stat-card">
+            <div class="stat-value">{{ total_runs }}</div>
+            <div>Total Runs</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">{{ total_properties }}</div>
+            <div>Total Properties</div>
+        </div>
+    </div>
+
+    <div id="status" class="status">
+        Loading status...
+    </div>
+
+    {% for property in properties %}
+    <div class="property">
+        <div class="property-header">
+            <h2 class="title">
+                <a href="{{ property.original_url }}" target="_blank">{{ property.title }}</a>
+            </h2>
+            <div class="price">${{ '{:,.0f}'.format(property.total_price) if property.total_price else 0 }}</div>
+        </div>
+        <div class="main-content">
+            <div class="images-container">
+                <div class="images">
+                    {% for image in property.images %}
+                    <img src="{{ image.image_url }}" alt="Property Image">
+                    {% endfor %}
+                </div>
+            </div>
+            {% if property.google_maps_link and property.map_coords %}
+            <div class="map-container">
+                <div class="map">
+                    <iframe
+                        src="https://www.google.com/maps?q={{ property.map_coords }}&z=12&output=embed"
+                        allowfullscreen=""
+                        loading="lazy"
+                        referrerpolicy="no-referrer-when-downgrade">
+                    </iframe>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+        <div class="attributes">
+            <div class="attribute"><strong>Rent:</strong> ${{ '{:,.0f}'.format(property.price) }}</div>
+            <div class="attribute"><strong>Common Costs:</strong> ${{ '{:,.0f}'.format(property.common_costs if property.common_costs else 0) }}</div>
+            <div class="attribute"><strong>Total Area:</strong> {{ property.total_area }}m²</div>
+            <div class="attribute"><strong>Floor:</strong> {{ property.floor }} of {{ property.total_floors }}</div>
+            <div class="attribute"><strong>Furnished:</strong> <span class="status-{{ 'yes' if property.furnished else 'no' }}">{{ 'Yes' if property.furnished else 'No' }}</span></div>
+            <div class="attribute"><strong>Gym:</strong> <span class="status-{{ 'yes' if property.has_gym else 'no' }}">{{ 'Yes' if property.has_gym else 'No' }}</span></div>
+            <div class="attribute metro-stations">
+                <strong>Metro Stations:</strong>
+                {% if property.metro_stations %}
+                <ul class="metro-list">
+                    {% for station in property.metro_stations %}
+                    <li class="metro-item">{{ station.name }} ({{ station.walking_minutes }} min)</li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <p>No metro stations nearby</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</body>
+</html> 

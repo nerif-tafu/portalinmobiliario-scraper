@@ -17,7 +17,7 @@ import random
 import os
 import datetime
 import webbrowser
-from config import (
+from scraper.config import (
     MAX_PAGES_PER_LOCATION,
     LISTINGS_PER_PAGE,
     LISTINGS_PER_LOCATION,
@@ -25,6 +25,7 @@ from config import (
     get_url_for_location
 )
 from urllib.parse import urlencode, urlparse, parse_qs
+from scraper.database import save_properties
 
 # At the top of the file, add these color constants
 ORANGE = '\033[93m'
@@ -254,8 +255,18 @@ def extract_listing_details(driver, url, price):
             for station in metro_station_list:
                 metro_station_name = station.find_element(By.CSS_SELECTOR, ".ui-pdp-color--BLACK.ui-pdp-size--XSMALL.ui-pdp-family--REGULAR")
                 metro_station_distance = station.find_element(By.CSS_SELECTOR, ".ui-pdp-color--GRAY.ui-pdp-size--XSMALL.ui-pdp-family--REGULAR")
-                all_metro_stations.append({'name': metro_station_name.text, 'walking_minutes': metro_station_distance.text.split(' ')[0], 'distance_meters': metro_station_distance.text.split(' ')[1]})
-            # Format the metro station name and distance into [{'name': 'Santa Isabel', 'walking_minutes': 8, 'distance_meters': 638}]
+                
+                # Parse Spanish format: "10 mins - 751 metros" or "12 mins - 1.523 metros"
+                distance_text = metro_station_distance.text
+                parts = distance_text.split(' - ')  # Split by the dash
+                walking_minutes = parts[0].split(' ')[0]  # Get "10" from "10 mins"
+                distance_meters = parts[1].split(' ')[0].replace('.', '')  # Get "1523" from "1.523"
+                
+                all_metro_stations.append({
+                    'name': metro_station_name.text,
+                    'walking_minutes': walking_minutes,
+                    'distance_meters': distance_meters
+                })
             details['metro_station'] = all_metro_stations
             print("Found metro station", details['metro_station'])
 
@@ -276,6 +287,9 @@ def extract_listing_details(driver, url, price):
 
             details['common_costs'] = int(common_costs_text)
             print("Found common costs", details['common_costs'])
+
+        except NoSuchElementException:
+            print("No common costs found")
 
         except Exception as e:
             print(f"Error getting common costs: {str(e)}")
@@ -347,9 +361,9 @@ def scrape_properties():
     chrome_options.add_argument("--start-maximized")
     chrome_options.add_argument("--window-size=1920,1080")
     chrome_options.add_argument(f"--user-agent={get_random_user_agent()}")
+    chrome_options.binary_location = "/usr/bin/chromium"
 
     driver = webdriver.Chrome(
-        service=Service(ChromeDriverManager().install()),
         options=chrome_options
     )
 
@@ -737,29 +751,31 @@ def perform_random_interactions(driver):
         print(f"Error during random interactions: {e}")
 
 if __name__ == "__main__":
-    # Create the scraped-data directory if it doesn't exist
-    os.makedirs('scraped-data', exist_ok=True)
+    from scraper.database import save_properties
+    import time
     
-    # Generate timestamp for filename
-    timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+    SCRAPE_INTERVAL = int(os.getenv('SCRAPE_INTERVAL', 3600))  # Default to 1 hour if not set
+    print(f"Starting scraper with {SCRAPE_INTERVAL} seconds interval")
     
-    # Get properties using configuration settings
-    properties = scrape_properties()
-    
-    # Save results to JSON file with timestamp
-    json_filename = f'scraped-data/properties_{timestamp}.json'
-    with open(json_filename, 'w', encoding='utf-8') as f:
-        json.dump(properties, f, ensure_ascii=False, indent=2)
-    
-    # Generate and save HTML with timestamp
-    html_filename = f'scraped-data/properties_{timestamp}.html'
-    html_content = generate_html(properties)
-    with open(html_filename, 'w', encoding='utf-8') as f:
-        f.write(html_content)
-    
-    print(f"\nScraped {len(properties)} total properties")
-    print(f"Saved to {json_filename}")
-    print(f"HTML saved to {html_filename}")
-    
-    # Open the HTML file in the default browser
-    webbrowser.open(html_filename)
+    while True:
+        try:
+            print(f"\nStarting new scraping run at {datetime.datetime.now()}")
+            
+            # Get properties using configuration settings
+            properties = scrape_properties()
+            
+            if not properties:
+                print("No properties were scraped!")
+            else:
+                # Save to database
+                try:
+                    save_properties(properties)
+                    print(f"\nSuccessfully scraped and saved {len(properties)} total properties")
+                except Exception as e:
+                    print(f"Error saving to database: {str(e)}")
+            
+        except Exception as e:
+            print(f"Error during scraping: {str(e)}")
+        
+        print(f"\nSleeping for {SCRAPE_INTERVAL} seconds...")
+        time.sleep(SCRAPE_INTERVAL)

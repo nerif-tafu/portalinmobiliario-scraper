@@ -3,7 +3,7 @@
 # Scraping limits (per location)
 MAX_PAGES_PER_LOCATION = 1
 LISTINGS_PER_PAGE = 48
-LISTINGS_PER_LOCATION = 6  # Changed from TOTAL_LISTINGS_LIMIT
+LISTINGS_PER_LOCATION = 1  # Changed from TOTAL_LISTINGS_LIMIT
 
 # Search filters
 LOCATIONS = [

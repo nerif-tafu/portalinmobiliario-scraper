@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Scraping Runs</title>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .run {
+            padding: 15px;
+            margin: 10px 0;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        .run.completed { background: #e8f5e9; }
+        .run.failed { background: #ffebee; }
+        .run.running { background: #e3f2fd; }
+        .nav {
+            margin: 20px 0;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 4px;
+        }
+        .nav a {
+            margin-right: 15px;
+            color: #2c5282;
+            text-decoration: none;
+        }
+        .nav a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="nav">
+        <a href="/">Home</a>
+        <a href="/admin">Admin</a>
+    </div>
+
+    <h1>Scraping Runs</h1>
+
+    {% for run in runs %}
+    <div class="run {{ run.status }}">
+        <h3><a href="{{ url_for('view_run', run_id=run.id) }}">Run #{{ run.id }}</a></h3>
+        <p>Started: {{ run.started_at.strftime('%Y-%m-%d %H:%M:%S') }}</p>
+        <p>Status: {{ run.status }}</p>
+        <p>Properties: {{ run.total_properties or 0 }}</p>
+        {% if run.error_message %}
+        <p class="error">Error: {{ run.error_message }}</p>
+        {% endif %}
+    </div>
+    {% endfor %}
+</body>
+</html> 
