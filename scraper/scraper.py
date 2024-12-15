@@ -24,7 +24,13 @@ from scraper.config import (
     get_url_for_location
 )
 from urllib.parse import urlencode, urlparse, parse_qs
-from scraper.database import save_properties
+from scraper.database import (
+    save_properties, 
+    save_single_property, 
+    get_db_session, 
+    is_duplicate_listing,
+    Session  # Add this import
+)
 from web.models import db, Run  # Add this import
 from web.app import app  # Import the Flask app
 from datetime import timedelta
@@ -39,11 +45,13 @@ logger = setup_logger()
 
 def log_and_print(message, level='info', color=None):
     """Helper function to both log and print messages"""
+    # Only print to console, let logger handle file logging
     if color:
         print(f"{color}{message}{RESET}")
     else:
         print(message)
         
+    # Log to file
     if level == 'info':
         logger.info(message)
     elif level == 'warning':
@@ -146,7 +154,7 @@ def extract_listing_details(driver, url, price):
                 # Load the page
                 clean_base_url = clean_url(url)
                 random_param = f"?t={int(time.time())}&r={random.random()}"
-                log_and_print("Getting", clean_base_url + random_param)
+                log_and_print(f"Getting {clean_base_url + random_param}")
                 driver.get(clean_base_url + random_param)
                 
                 # Wait for main container
@@ -414,8 +422,11 @@ def scrape_location(driver, location):
             try:
                 property_data = process_listing(driver, listing, location)
                 if property_data:
-                    properties.append(property_data)
-                    log_and_print(f"Successfully processed listing: {property_data['title']} ({i}/{len(listings)} for {location})")
+                    # Save property immediately
+                    saved_property = save_single_property(property_data, run_id)
+                    if saved_property:
+                        properties.append(property_data)
+                        log_and_print(f"Successfully processed and saved listing: {property_data['title']}")
             except Exception as e:
                 log_and_print(f"Error processing listing: {str(e)}", level='error')
                 
@@ -425,9 +436,7 @@ def scrape_location(driver, location):
     return properties
 
 def scrape_properties():
-    """
-    Scrape property listings using configuration settings
-    """
+    """Scrape property listings using configuration settings"""
     chrome_options = Options()
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
@@ -436,15 +445,12 @@ def scrape_properties():
     chrome_options.add_argument(f"--user-agent={get_random_user_agent()}")
     chrome_options.binary_location = "/usr/bin/chromium"
 
-    driver = webdriver.Chrome(
-        options=chrome_options
-    )
-
-    driver.maximize_window()
-
-    all_properties = []
+    driver = webdriver.Chrome(options=chrome_options)
+    session = get_db_session()
 
     try:
+        all_properties = []
+        
         for location in LOCATIONS:
             log_and_print(f"\nScraping location: {location}")
             current_offset = 0
@@ -516,6 +522,11 @@ def scrape_properties():
                     for data in listing_data:
                         if location_properties_count >= LISTINGS_PER_PAGE:
                             break
+
+                        # Check if listing already exists
+                        if is_duplicate_listing(session, data["link"]):
+                            log_and_print(f"Skipping duplicate listing: {data['title']}")
+                            continue
                             
                         try:
                             # Get detailed info from listing page
@@ -529,7 +540,7 @@ def scrape_properties():
                                 }
                                 all_properties.append(combined_property)
                                 location_properties_count += 1
-                                log_and_print(f"Successfully processed listing: {data['title']} ({location_properties_count}/{LISTINGS_PER_PAGE} for {location})")
+                                log_and_print(f"Successfully processed listing: {data['title']}")
 
                         except Exception as e:
                             log_and_print(f"Error processing listing details: {str(e)}", level='error')
@@ -546,6 +557,7 @@ def scrape_properties():
         return all_properties
 
     finally:
+        Session.remove()  # Use Session.remove() instead of session.remove()
         driver.quit()
 
 def convert_to_embed_src(url):
@@ -874,9 +886,6 @@ if __name__ == "__main__":
                 run.completed_at = datetime.datetime.utcnow()
                 run.next_run_at = run.completed_at + timedelta(seconds=SCRAPE_INTERVAL)
                 db.session.commit()
-            
-            log_and_print(f"\nSleeping for {SCRAPE_INTERVAL} seconds...")
-            time.sleep(SCRAPE_INTERVAL)
             
         except Exception as e:
             log_and_print(f"Critical error: {str(e)}", level='error')
