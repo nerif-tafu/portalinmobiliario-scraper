@@ -1,100 +1,133 @@
-# Property Scraper for Portal Inmobiliario
+# Property Scraper
 
-A Python web scraper designed to collect rental property listings from Portal Inmobiliario.
+A web scraping system that collects rental property listings from Portal Inmobiliario. Built with Python, Flask, PostgreSQL, and Docker.
 
 ## Features
 
-- Scrapes detailed property information including:
-  - Property title and price
-  - Images
-  - Full address with Google Maps link
-  - Nearby metro stations with walking distances
-  - Common costs
-  - Property specifications (area, floor, bedrooms, etc.)
-  - Amenities (gym, furnished status, etc.)
-- Rate limiting protection and retry mechanisms
-- Random delays and user agent rotation
-- Exports data to both JSON and HTML formats
-- Automatic HTML report generation with visual representation
+- Scrapes rental properties from multiple locations:
+  - Providencia
+  - Ñuñoa
+  - Las Condes
+  - Vitacura
+- Stores detailed property information:
+  - Price and common costs
+  - Area and floor details
+  - Metro station proximity with walking times
+  - Google Maps location
+  - Property images
+- Web interface for viewing and managing scraped data
+- Property preference tracking (like/dislike)
+- Automated scraping at configurable intervals
 
-## Prerequisites
+## Tech Stack
 
-- Python 3.7+
-- Google Chrome browser
-- pip (Python package installer)
+### Backend
+- Python 3.11
+- Flask & SQLAlchemy
+- PostgreSQL
+- Selenium with Chromium
+
+### Frontend
+- HTML/CSS
+- JavaScript
+- Bootstrap
+
+### Infrastructure
+- Docker & Docker Compose
 
 ## Installation
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/nerif-tafu/portalinmobiliario-scraper.git
-cd portalinmobiliario-scraper
+git clone https://github.com/yourusername/property-scraper.git
+cd property-scraper
 ```
 
-2. Create a virtual environment (recommended):
+2. Start the services:
 ```bash
-python3 -m venv venv
-source venv/bin/activate  # On Windows use: venv\Scripts\activate
+docker-compose up --build
 ```
 
-3. Install required packages:
-```bash
-pip install -r requirements.txt
+## Configuration
+
+### Docker Environment Variables (docker-compose.yml)
+```yaml
+# Database settings
+POSTGRES_DB: property_scraper
+POSTGRES_USER: scraper
+POSTGRES_PASSWORD: scraper_password
+
+# Scraper settings
+SCRAPE_INTERVAL: 60              # Seconds between scrapes
+MAX_PAGES_PER_LOCATION: -1       # Number of pages to scrape (-1 for all)
+```
+
+### Scraper Configuration (scraper/config.py)
+```python
+LOCATIONS = [
+    "providencia-metropolitana",
+    "nunoa-metropolitana",
+    "las-condes-metropolitana",
+    "vitacura-metropolitana"
+]
 ```
 
 ## Usage
 
-Run the scraper with default settings:
+### Web Interface
+- Main dashboard: `http://localhost:3000`
+- View specific run: `http://localhost:3000/?run_id=<run_id>`
+- Check scraper status: `http://localhost:3000/status`
+
+### Database Management
 ```bash
-python scrape.py
+# Connect to database
+docker-compose exec db psql -U scraper -d property_scraper
+
+# Apply migrations manually if needed
+docker-compose exec db psql -U scraper -d property_scraper -f /docker-entrypoint-initdb.d/init.sql
 ```
 
-The script will:
-1. Scrape property listings from Portal Inmobiliario
-2. Save the data in JSON format
-3. Generate an HTML report
-4. Automatically open the HTML report in your default browser
+### Maintenance
+```bash
+# View logs
+docker-compose logs -f scraper
 
-### Configuration
+# Restart services
+docker-compose restart
 
-You can modify these parameters in `config.py`:
-- `max_pages`: Maximum number of pages to scrape
-- `listings_per_page`: Number of listings to scrape per page
-- `total_listings_limit`: Total number of listings to collect
-- `location`: Target area for property search
-- `min_price_clp`: Minimum price in CLP
-- `max_price_clp`: Maximum price in CLP
-- `min_bedrooms`: Minimum number of bedrooms
-- `only_used`: Whether to only show used properties
-
-Example configuration in `config.py`:
-```python
-# Scraping limits
-MAX_PAGES = 1
-LISTINGS_PER_PAGE = 48
-TOTAL_LISTINGS_LIMIT = 48
-
-# Search filters
-LOCATION = "providencia-metropolitana"
-MIN_PRICE_CLP = 0
-MAX_PRICE_CLP = 1200000
-MIN_BEDROOMS = 2
-ONLY_USED = True
+# Clean up and rebuild
+docker-compose down -v
+docker system prune -a --volumes
+docker-compose up --build
 ```
 
-## Output
+## Project Structure
+```
+.
+├── docker/                 # Docker configuration
+│   ├── scraper/           # Scraper service
+│   └── web/               # Web service
+├── migrations/            # Database migrations
+├── scraper/              # Scraper code
+│   ├── config.py         # Scraping configuration
+│   ├── database.py       # Database operations
+│   └── scraper.py        # Main scraping logic
+├── web/                  # Web application
+│   ├── templates/        # HTML templates
+│   ├── app.py           # Flask application
+│   └── models.py        # Database models
+└── docker-compose.yml    # Service orchestration
+```
 
-The script creates a `scraped-data` directory containing:
-- `properties_[timestamp].json`: Raw data in JSON format
-- `properties_[timestamp].html`: Formatted HTML report
+## Database Schema
 
-## Rate Limiting and Error Handling
-
-The scraper includes:
-- Random delays between requests
-- User agent rotation
-- Automatic retry mechanism for rate-limited requests
-- Graceful error handling for missing data
+### Tables
+- `runs`: Scraping run metadata and status
+- `properties`: Property listings and details
+- `property_images`: Property image URLs
+- `metro_stations`: Nearby metro stations with walking times
+- `property_preferences`: User property preferences (liked/disliked)
 
 ## Contributing
 

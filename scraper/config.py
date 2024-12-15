@@ -4,16 +4,15 @@ import os
 
 # Scraping limits (per location)
 MAX_PAGES_PER_LOCATION = int(os.getenv('MAX_PAGES_PER_LOCATION', 1))
-LISTINGS_PER_PAGE = int(os.getenv('LISTINGS_PER_PAGE', 8))  # Set to None for all listings on page
-LISTINGS_PER_LOCATION = int(os.getenv('LISTINGS_PER_LOCATION', 8))  # Set to None for all listings
+LISTINGS_PER_PAGE = int(os.getenv('LISTINGS_PER_PAGE', 48))  # Set to None for all listings on page
 
 # Search filters
 LOCATIONS = [
     "providencia-metropolitana",
     "nunoa-metropolitana",
-    # "las-condes-metropolitana",
+    "las-condes-metropolitana",
     # "la-reina-metropolitana",
-    # "vitacura-metropolitana",
+    "vitacura-metropolitana",
     # "lo-barnechea-metropolitana"
 ]
 MIN_PRICE_CLP = 0

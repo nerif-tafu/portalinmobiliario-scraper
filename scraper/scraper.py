@@ -20,7 +20,6 @@ import webbrowser
 from scraper.config import (
     MAX_PAGES_PER_LOCATION,
     LISTINGS_PER_PAGE,
-    LISTINGS_PER_LOCATION,
     LOCATIONS,
     get_url_for_location
 )
@@ -354,6 +353,52 @@ def extract_listing_details(driver, url, price):
         print(f"{ORANGE}Warning: Error processing listing: {str(e)}{RESET}")
         return None
 
+def scrape_location(driver, location):
+    """Scrape properties for a location"""
+    properties = []
+    page = 0
+    
+    while True:
+        # Check if we've hit the page limit
+        if MAX_PAGES_PER_LOCATION > 0 and page >= MAX_PAGES_PER_LOCATION:
+            break
+            
+        url = get_url_for_location(location, page * 48)  # 48 is Portal Inmobiliario's page size
+        print(f"\nScraping page {page + 1} (offset: {page * 48})")
+        
+        driver.get(url)
+        wait_for_page_load(driver)
+        
+        # Get all listing elements
+        listings = WebDriverWait(driver, 10).until(
+            EC.presence_of_all_elements_located((By.CSS_SELECTOR, "li.ui-search-layout__item"))
+        )
+        
+        if not listings:
+            print("No listings found on this page. Stopping.")
+            break
+
+        print(f"Found {len(listings)} listings on page {page + 1}")
+        
+        # Limit listings per page if configured
+        if LISTINGS_PER_PAGE:
+            listings = listings[:LISTINGS_PER_PAGE]
+            
+        # Process listings
+        for i, listing in enumerate(listings, 1):
+            try:
+                property_data = process_listing(driver, listing, location)
+                if property_data:
+                    properties.append(property_data)
+                    print(f"Successfully processed listing: {property_data['title']} ({i}/{len(listings)} for {location})")
+            except Exception as e:
+                print(f"Error processing listing: {str(e)}")
+                
+        page += 1
+            
+    print(f"Completed scraping {location}: {len(properties)} properties found")
+    return properties
+
 def scrape_properties():
     """
     Scrape property listings using configuration settings
@@ -381,8 +426,8 @@ def scrape_properties():
             location_properties_count = 0
 
             for page in range(MAX_PAGES_PER_LOCATION):
-                if location_properties_count >= LISTINGS_PER_LOCATION:
-                    print(f"\nReached listings limit of {LISTINGS_PER_LOCATION} for {location}")
+                if location_properties_count >= LISTINGS_PER_PAGE:
+                    print(f"\nReached listings limit of {LISTINGS_PER_PAGE} for {location}")
                     break
 
                 url = get_url_for_location(location, current_offset)
@@ -444,7 +489,7 @@ def scrape_properties():
 
                     # Second pass: visit each listing page
                     for data in listing_data:
-                        if location_properties_count >= LISTINGS_PER_LOCATION:
+                        if location_properties_count >= LISTINGS_PER_PAGE:
                             break
                             
                         try:
@@ -459,7 +504,7 @@ def scrape_properties():
                                 }
                                 all_properties.append(combined_property)
                                 location_properties_count += 1
-                                print(f"Successfully processed listing: {data['title']} ({location_properties_count}/{LISTINGS_PER_LOCATION} for {location})")
+                                print(f"Successfully processed listing: {data['title']} ({location_properties_count}/{LISTINGS_PER_PAGE} for {location})")
 
                         except Exception as e:
                             print(f"Error processing listing details: {str(e)}")
