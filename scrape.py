@@ -18,10 +18,11 @@ import os
 import datetime
 import webbrowser
 from config import (
-    MAX_PAGES,
+    MAX_PAGES_PER_LOCATION,
     LISTINGS_PER_PAGE,
-    TOTAL_LISTINGS_LIMIT,
-    BASE_URL
+    LISTINGS_PER_LOCATION,
+    LOCATIONS,
+    get_url_for_location
 )
 
 # At the top of the file, add these color constants
@@ -352,97 +353,105 @@ def scrape_properties():
     driver.maximize_window()
 
     all_properties = []
-    current_offset = 0
 
     try:
-        for page in range(MAX_PAGES):
-            if TOTAL_LISTINGS_LIMIT and len(all_properties) >= TOTAL_LISTINGS_LIMIT:
-                print(f"\nReached total listings limit of {TOTAL_LISTINGS_LIMIT}")
-                break
+        for location in LOCATIONS:
+            print(f"\nScraping location: {location}")
+            current_offset = 0
+            location_properties_count = 0
 
-            url = BASE_URL.format(offset=current_offset)
-            print(f"\nScraping page {page + 1} (offset: {current_offset})")
-            
-            # Store the links and titles first
-            listing_data = []
-            
-            driver.get(url)
-            wait_for_page_load(driver)
-
-            try:
-                # Wait for listings container
-                WebDriverWait(driver, 10).until(
-                    EC.presence_of_element_located((By.CSS_SELECTOR, "ol.ui-search-layout"))
-                )
-                
-                # Get all listing elements
-                listings = WebDriverWait(driver, 10).until(
-                    EC.presence_of_all_elements_located((By.CSS_SELECTOR, "li.ui-search-layout__item"))
-                )
-
-                if not listings:
-                    print("No listings found on this page. Stopping.")
+            for page in range(MAX_PAGES_PER_LOCATION):
+                if location_properties_count >= LISTINGS_PER_LOCATION:
+                    print(f"\nReached listings limit of {LISTINGS_PER_LOCATION} for {location}")
                     break
 
-                if LISTINGS_PER_PAGE:
-                    listings = listings[:LISTINGS_PER_PAGE]
+                url = get_url_for_location(location, current_offset)
+                print(f"\nScraping page {page + 1} (offset: {current_offset})")
+                
+                # Store the links and titles first
+                listing_data = []
+                
+                driver.get(url)
+                wait_for_page_load(driver)
 
-                print(f"Found {len(listings)} listings on page {page + 1}")
+                try:
+                    # Wait for listings container
+                    WebDriverWait(driver, 10).until(
+                        EC.presence_of_element_located((By.CSS_SELECTOR, "ol.ui-search-layout"))
+                    )
+                    
+                    # Get all listing elements
+                    listings = WebDriverWait(driver, 10).until(
+                        EC.presence_of_all_elements_located((By.CSS_SELECTOR, "li.ui-search-layout__item"))
+                    )
 
-                # First pass: collect all the necessary data from the listing preview
-                for listing in listings:
-                    try:
-                        title = WebDriverWait(listing, 10).until(
-                            EC.presence_of_element_located((By.CSS_SELECTOR, ".ui-search-item__title-label-grid"))
-                        ).text
-                        
-                        price_element = WebDriverWait(listing, 10).until(
-                            EC.presence_of_element_located((By.CSS_SELECTOR, ".andes-money-amount"))
-                        )
-                        
-                        link = WebDriverWait(listing, 10).until(
-                            EC.presence_of_element_located((By.CSS_SELECTOR, "a.ui-search-link"))
-                        ).get_attribute("href")
-                        link = clean_url(link)
-                        
-                        price = convert_price_to_clp(price_element)
-                        
-                        listing_data.append({
-                            "title": title,
-                            "price": price,
-                            "link": link
-                        })
-                        
-                    except Exception as e:
-                        print(f"Error collecting listing preview data: {str(e)}")
-                        continue
-
-                # Second pass: visit each listing page
-                for data in listing_data:
-                    if TOTAL_LISTINGS_LIMIT and len(all_properties) >= TOTAL_LISTINGS_LIMIT:
+                    if not listings:
+                        print("No listings found on this page. Stopping.")
                         break
-                        
-                    try:
-                        # Get detailed info from listing page
-                        listing_details = extract_listing_details(driver, data["link"], data["price"])
 
-                        if listing_details:
-                            combined_property = {
-                                **data,
-                                **listing_details
-                            }
-                            all_properties.append(combined_property)  # Add to the list
-                            print(f"Successfully processed listing: {data['title']}")
+                    if LISTINGS_PER_PAGE:
+                        listings = listings[:LISTINGS_PER_PAGE]
 
-                    except Exception as e:
-                        print(f"Error processing listing details: {str(e)}")
-                        continue
+                    print(f"Found {len(listings)} listings on page {page + 1}")
 
-                current_offset += LISTINGS_PER_PAGE
+                    # First pass: collect all the necessary data from the listing preview
+                    for listing in listings:
+                        try:
+                            title = WebDriverWait(listing, 10).until(
+                                EC.presence_of_element_located((By.CSS_SELECTOR, ".ui-search-item__title-label-grid"))
+                            ).text
+                            
+                            price_element = WebDriverWait(listing, 10).until(
+                                EC.presence_of_element_located((By.CSS_SELECTOR, ".andes-money-amount"))
+                            )
+                            
+                            link = WebDriverWait(listing, 10).until(
+                                EC.presence_of_element_located((By.CSS_SELECTOR, "a.ui-search-link"))
+                            ).get_attribute("href")
+                            link = clean_url(link)
+                            
+                            price = convert_price_to_clp(price_element)
+                            
+                            listing_data.append({
+                                "title": title,
+                                "price": price,
+                                "link": link
+                            })
+                            
+                        except Exception as e:
+                            print(f"Error collecting listing preview data: {str(e)}")
+                            continue
 
-            except TimeoutException:
-                print(f"Timeout waiting for listings on page {page + 1}")
-                break
+                    # Second pass: visit each listing page
+                    for data in listing_data:
+                        if location_properties_count >= LISTINGS_PER_LOCATION:
+                            break
+                            
+                        try:
+                            # Get detailed info from listing page
+                            listing_details = extract_listing_details(driver, data["link"], data["price"])
+
+                            if listing_details:
+                                combined_property = {
+                                    **data,
+                                    "location": location,
+                                    **listing_details
+                                }
+                                all_properties.append(combined_property)
+                                location_properties_count += 1
+                                print(f"Successfully processed listing: {data['title']} ({location_properties_count}/{LISTINGS_PER_LOCATION} for {location})")
+
+                        except Exception as e:
+                            print(f"Error processing listing details: {str(e)}")
+                            continue
+
+                    current_offset += LISTINGS_PER_PAGE
+
+                except TimeoutException:
+                    print(f"Timeout waiting for listings on page {page + 1}")
+                    continue
+
+            print(f"Completed scraping {location}: {location_properties_count} properties found")
 
         return all_properties
 
@@ -455,6 +464,8 @@ def generate_html(properties):
     <html>
     <head>
         <title>Property Listings</title>
+        <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+        <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
         <style>
             body { font-family: Arial, sans-serif; margin: 20px; }
             .property { border: 1px solid #ccc; padding: 15px; margin-bottom: 20px; }
@@ -462,6 +473,8 @@ def generate_html(properties):
             .details { margin: 10px 0; }
             .images { display: flex; gap: 10px; overflow-x: auto; margin: 10px 0; }
             .images img { max-width: 200px; height: auto; }
+            .maps-container { display: flex; gap: 10px; margin: 10px 0; height: 300px; }
+            .map { flex: 1; }
             .attributes { margin: 10px 0; color: #666; }
             .links { margin-top: 10px; }
             .links a { display: inline-block; margin-right: 10px; color: #2c5282; text-decoration: none; }
@@ -472,7 +485,17 @@ def generate_html(properties):
         <h1>Property Listings</h1>
     """
 
-    for prop in properties:
+    # Santiago center coordinates
+    santiago_center = [-33.4489, -70.6693]
+
+    for idx, prop in enumerate(properties):
+        # Extract coordinates from Google Maps link
+        coords = None
+        if prop.get('google_maps_link'):
+            match = re.search(r'@(-?\d+\.\d+),(-?\d+\.\d+)', prop['google_maps_link'])
+            if match:
+                coords = [float(match.group(1)), float(match.group(2))]
+
         html += f"""
         <div class="property">
             <h2>{prop['title']}</h2>
@@ -480,7 +503,34 @@ def generate_html(properties):
             <div class="images">
                 {''.join(f'<img src="{img}" alt="Property Image">' for img in prop['images'])}
             </div>
+        """
+
+        if coords:
+            html += f"""
+            <div class="maps-container">
+                <div id="propertyMap{idx}" class="map"></div>
+                <div id="contextMap{idx}" class="map"></div>
+            </div>
+            <script>
+                // Property location map
+                var propertyMap{idx} = L.map('propertyMap{idx}').setView({coords}, 15);
+                L.tileLayer('https://{{s}}.tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png', {{
+                    attribution: '© OpenStreetMap contributors'
+                }}).addTo(propertyMap{idx});
+                L.marker({coords}).addTo(propertyMap{idx});
+
+                // Context map
+                var contextMap{idx} = L.map('contextMap{idx}').setView({santiago_center}, 11);
+                L.tileLayer('https://{{s}}.tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png', {{
+                    attribution: '© OpenStreetMap contributors'
+                }}).addTo(contextMap{idx});
+                L.marker({coords}).addTo(contextMap{idx});
+            </script>
+            """
+
+        html += f"""
             <div class="attributes">
+                <p><strong>Location:</strong> {prop.get('location', 'N/A')}</p>
                 <p><strong>Address:</strong> {prop.get('full_address', 'N/A')}</p>
                 <p><strong>Metro Stations:</strong></p>
                 {'<ul>' + ''.join(f'<li>{station["name"]} - {station["walking_minutes"]} mins - {station["distance_meters"]} meters</li>' for station in prop.get('metro_station', [])) + '</ul>' if prop.get('metro_station') else '<p>No metro stations nearby</p>'}
