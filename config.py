@@ -3,16 +3,16 @@
 # Scraping limits (per location)
 MAX_PAGES_PER_LOCATION = 1
 LISTINGS_PER_PAGE = 48
-LISTINGS_PER_LOCATION = 2  # Changed from TOTAL_LISTINGS_LIMIT
+LISTINGS_PER_LOCATION = 6  # Changed from TOTAL_LISTINGS_LIMIT
 
 # Search filters
 LOCATIONS = [
     "providencia-metropolitana",
     "nunoa-metropolitana",
-    "las-condes-metropolitana",
-    "la-reina-metropolitana",
-    "vitacura-metropolitana",
-    "lo-barnechea-metropolitana"
+    # "las-condes-metropolitana",
+    # "la-reina-metropolitana",
+    # "vitacura-metropolitana",
+    # "lo-barnechea-metropolitana"
 ]
 MIN_PRICE_CLP = 0
 MAX_PRICE_CLP = 1200000

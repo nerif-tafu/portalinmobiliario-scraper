@@ -24,6 +24,7 @@ from config import (
     LOCATIONS,
     get_url_for_location
 )
+from urllib.parse import urlencode, urlparse, parse_qs
 
 # At the top of the file, add these color constants
 ORANGE = '\033[93m'
@@ -248,12 +249,14 @@ def extract_listing_details(driver, url, price):
             metro_station_holder_parent = metro_station_holder.find_element(By.XPATH, "./..")
             metro_station_list = metro_station_holder_parent.find_elements(By.CSS_SELECTOR, ".ui-vip-poi__item")
 
+            all_metro_stations = []
+
             for station in metro_station_list:
                 metro_station_name = station.find_element(By.CSS_SELECTOR, ".ui-pdp-color--BLACK.ui-pdp-size--XSMALL.ui-pdp-family--REGULAR")
                 metro_station_distance = station.find_element(By.CSS_SELECTOR, ".ui-pdp-color--GRAY.ui-pdp-size--XSMALL.ui-pdp-family--REGULAR")
-            
+                all_metro_stations.append({'name': metro_station_name.text, 'walking_minutes': metro_station_distance.text.split(' ')[0], 'distance_meters': metro_station_distance.text.split(' ')[1]})
             # Format the metro station name and distance into [{'name': 'Santa Isabel', 'walking_minutes': 8, 'distance_meters': 638}]
-            details['metro_station'] = [{'name': metro_station_name.text, 'walking_minutes': metro_station_distance.text.split(' ')[0], 'distance_meters': metro_station_distance.text.split(' ')[1]} for station in metro_station_list]
+            details['metro_station'] = all_metro_stations
             print("Found metro station", details['metro_station'])
 
         except NoSuchElementException:
@@ -458,94 +461,186 @@ def scrape_properties():
     finally:
         driver.quit()
 
-# Update the HTML generation to include new fields
+def convert_to_embed_src(url):
+    # Parse the input URL
+    parsed_url = urlparse(url)
+    query_params = parse_qs(parsed_url.query)
+    
+    # Extract coordinates from the URL path (after the '@' symbol)
+    path_parts = parsed_url.path.split('@')
+    if len(path_parts) > 1:
+        coords_part = path_parts[1].split(',')[:2]  # Get lat and lng
+        latitude, longitude = coords_part
+    else:
+        # Fallback to query parameters if path format is different
+        latitude, longitude = query_params.get("ll", [""])[0].split(",")
+    
+    # Construct the embed URL
+    embed_params = {
+        "q": f"{latitude},{longitude}",
+        "hl": "en",
+        "z": "15",  # Close-up view
+        "output": "embed",
+    }
+    return f"https://www.google.com/maps?{urlencode(embed_params)}"
+
 def generate_html(properties):
     html = """
     <html>
     <head>
         <title>Property Listings</title>
-        <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-        <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
         <style>
-            body { font-family: Arial, sans-serif; margin: 20px; }
-            .property { border: 1px solid #ccc; padding: 15px; margin-bottom: 20px; }
-            .price { font-size: 1.2em; font-weight: bold; color: #2c5282; }
-            .details { margin: 10px 0; }
-            .images { display: flex; gap: 10px; overflow-x: auto; margin: 10px 0; }
-            .images img { max-width: 200px; height: auto; }
-            .maps-container { display: flex; gap: 10px; margin: 10px 0; height: 300px; }
-            .map { flex: 1; }
-            .attributes { margin: 10px 0; color: #666; }
-            .links { margin-top: 10px; }
-            .links a { display: inline-block; margin-right: 10px; color: #2c5282; text-decoration: none; }
-            .links a:hover { text-decoration: underline; }
+            body { 
+                font-family: Arial, sans-serif; 
+                margin: 20px;
+                max-width: 1200px;
+                margin: 0 auto;
+            }
+            .property { 
+                border: 1px solid #ccc; 
+                padding: 15px; 
+                margin-bottom: 20px;
+            }
+            .property-header {
+                margin-bottom: 15px;
+            }
+            .title { 
+                margin: 0;
+                font-size: 1.5em;
+            }
+            .title a {
+                color: inherit;
+                text-decoration: none;
+            }
+            .title a:hover {
+                color: #2c5282;
+                text-decoration: underline;
+            }
+            .price { 
+                font-size: 1.2em;
+                font-weight: bold;
+                color: #2c5282;
+            }
+            .main-content {
+                display: flex;
+                gap: 20px;
+                margin-bottom: 15px;
+            }
+            .images-container {
+                flex: 1;
+                max-width: 50%;
+            }
+            .images { 
+                display: flex;
+                gap: 10px;
+                overflow-x: auto;
+                margin: 0;
+                max-height: 300px;
+            }
+            .images img { 
+                height: 300px;
+                width: auto;
+                object-fit: cover;
+            }
+            .map-container {
+                flex: 1;
+            }
+            .map { 
+                height: 300px;
+            }
+            .map iframe { 
+                width: 100%;
+                height: 100%;
+                border: 0;
+            }
+            .attributes {
+                display: grid;
+                grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+                gap: 10px;
+                margin: 10px 0;
+                color: #666;
+            }
+            .attribute {
+                padding: 8px;
+                background: #f5f5f5;
+                border-radius: 4px;
+            }
+            .status-yes {
+                color: #059669;
+                font-weight: bold;
+            }
+            .status-no {
+                color: #dc2626;
+                font-weight: bold;
+            }
+            .metro-stations {
+                grid-column: 1 / -1;
+            }
+            .metro-list {
+                display: flex;
+                gap: 10px;
+                flex-wrap: wrap;
+                margin: 5px 0;
+                padding: 0;
+                list-style: none;
+            }
+            .metro-item {
+                background: #e9ecef;
+                padding: 5px 10px;
+                border-radius: 4px;
+                font-size: 0.9em;
+            }
         </style>
     </head>
     <body>
         <h1>Property Listings</h1>
     """
 
-    # Santiago center coordinates
-    santiago_center = [-33.4489, -70.6693]
-
-    for idx, prop in enumerate(properties):
-        # Extract coordinates from Google Maps link
-        coords = None
-        if prop.get('google_maps_link'):
-            match = re.search(r'@(-?\d+\.\d+),(-?\d+\.\d+)', prop['google_maps_link'])
-            if match:
-                coords = [float(match.group(1)), float(match.group(2))]
-
+    for prop in properties:
         html += f"""
         <div class="property">
-            <h2>{prop['title']}</h2>
-            <div class="price">${'{:,.0f}'.format(prop['total_price'] if prop['total_price'] is not None else 0)}</div>
-            <div class="images">
-                {''.join(f'<img src="{img}" alt="Property Image">' for img in prop['images'])}
+            <div class="property-header">
+                <h2 class="title">
+                    <a href="{prop['link']}" target="_blank">{prop['title']}</a>
+                </h2>
+                <div class="price">${'{:,.0f}'.format(prop['total_price'] if prop['total_price'] is not None else 0)}</div>
             </div>
+            <div class="main-content">
+                <div class="images-container">
+                    <div class="images">
+                        {''.join(f'<img src="{img}" alt="Property Image">' for img in prop['images'])}
+                    </div>
+                </div>
         """
 
-        if coords:
+        if prop.get('google_maps_link'):
+            context_src = convert_to_embed_src(prop['google_maps_link']).replace("z=15", "z=12")
             html += f"""
-            <div class="maps-container">
-                <div id="propertyMap{idx}" class="map"></div>
-                <div id="contextMap{idx}" class="map"></div>
-            </div>
-            <script>
-                // Property location map
-                var propertyMap{idx} = L.map('propertyMap{idx}').setView({coords}, 15);
-                L.tileLayer('https://{{s}}.tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png', {{
-                    attribution: '© OpenStreetMap contributors'
-                }}).addTo(propertyMap{idx});
-                L.marker({coords}).addTo(propertyMap{idx});
-
-                // Context map
-                var contextMap{idx} = L.map('contextMap{idx}').setView({santiago_center}, 11);
-                L.tileLayer('https://{{s}}.tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png', {{
-                    attribution: '© OpenStreetMap contributors'
-                }}).addTo(contextMap{idx});
-                L.marker({coords}).addTo(contextMap{idx});
-            </script>
+                <div class="map-container">
+                    <div class="map">
+                        <iframe
+                            src="{context_src}"
+                            allowfullscreen=""
+                            loading="lazy"
+                            referrerpolicy="no-referrer-when-downgrade">
+                        </iframe>
+                    </div>
+                </div>
             """
 
         html += f"""
-            <div class="attributes">
-                <p><strong>Location:</strong> {prop.get('location', 'N/A')}</p>
-                <p><strong>Address:</strong> {prop.get('full_address', 'N/A')}</p>
-                <p><strong>Metro Stations:</strong></p>
-                {'<ul>' + ''.join(f'<li>{station["name"]} - {station["walking_minutes"]} mins - {station["distance_meters"]} meters</li>' for station in prop.get('metro_station', [])) + '</ul>' if prop.get('metro_station') else '<p>No metro stations nearby</p>'}
-                <p><strong>Rent:</strong> {prop.get('price', 'N/A')}</p>
-                <p><strong>Common Costs:</strong> {prop.get('common_costs', 'N/A')}</p>
-                <p><strong>Gym:</strong> {'Yes' if prop.get('has_gym') else 'No'}</p>
-                <p><strong>Floor:</strong> {prop.get('floor', 'N/A')}</p>
-                <p><strong>Total Floors:</strong> {prop.get('total_floors', 'N/A')}</p>
-                <p><strong>Furnished:</strong> {prop.get('furnished', 'N/A')}</p>
-                <p><strong>Total Area:</strong> {prop.get('total_area', 'N/A')}</p>
-                <p><strong>Apartment Type:</strong> {prop.get('apartment_type', 'N/A')}</p>
             </div>
-            <div class="links">
-                <a href="{prop['link']}" target="_blank">View Property</a>
-                {f'<a href="{prop.get("google_maps_link")}" target="_blank">View Maps</a>' if prop.get('google_maps_link') else ''}
+            <div class="attributes">
+                <div class="attribute"><strong>Rent:</strong> ${'{:,.0f}'.format(prop.get('price', 0))}</div>
+                <div class="attribute"><strong>Common Costs:</strong> ${'{:,.0f}'.format(prop.get('common_costs', 0))}</div>
+                <div class="attribute"><strong>Total Area:</strong> {prop.get('total_area', 'N/A')}m²</div>
+                <div class="attribute"><strong>Floor:</strong> {prop.get('floor', 'N/A')} of {prop.get('total_floors', 'N/A')}</div>
+                <div class="attribute"><strong>Furnished:</strong> <span class="status-{'yes' if prop.get('furnished') else 'no'}">{'Yes' if prop.get('furnished') else 'No'}</span></div>
+                <div class="attribute"><strong>Gym:</strong> <span class="status-{'yes' if prop.get('has_gym') else 'no'}">{'Yes' if prop.get('has_gym') else 'No'}</span></div>
+                <div class="attribute metro-stations">
+                    <strong>Metro Stations:</strong>
+                    {'<ul class="metro-list">' + ''.join(f'<li class="metro-item">{station["name"]} ({station["walking_minutes"]} min)</li>' for station in prop.get('metro_station', [])) + '</ul>' if prop.get('metro_station') else '<p>No metro stations nearby</p>'}
+                </div>
             </div>
         </div>
         """
