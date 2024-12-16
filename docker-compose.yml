@@ -8,7 +8,6 @@ services:
       POSTGRES_USER: scraper
       POSTGRES_PASSWORD: scraper_password
       MAX_PAGES_PER_LOCATION: -1
-      LISTINGS_PER_PAGE: 48
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
