@@ -71,7 +71,6 @@ class PropertyView(ModelView):
 class PropertyImageView(ModelView):
     column_list = ('property', 'image_url')
     column_searchable_list = ['image_url']
-    column_filters = ['property.location']
 
 class MetroStationView(ModelView):
     column_list = (
@@ -83,8 +82,7 @@ class MetroStationView(ModelView):
     column_searchable_list = ['name']
     column_filters = [
         'name', 
-        'walking_minutes',
-        'property.location'
+        'walking_minutes'
     ]
     column_sortable_list = [
         'walking_minutes', 
