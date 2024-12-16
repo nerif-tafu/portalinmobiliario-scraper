@@ -278,7 +278,7 @@ def extract_listing_details(url, price):
 
         except Exception as e:
             log_and_print(f"Error getting specifications: {str(e)}", level='error')
-            time.sleep(1000)
+            time.sleep(10)
 
         try:
             metro_station = driver.find_element(By.CSS_SELECTOR, ".andes-tab-content.ui-vip-poi__tab-content")
