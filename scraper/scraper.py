@@ -634,6 +634,7 @@ if __name__ == "__main__":
                             log_and_print(f"Skipping duplicate listing: {data['title']}")
                             continue
 
+                        log_and_print(f"Extracting details for {data['title']}")
                         listing_details = extract_listing_details(data["link"], data["price"])
                     
                         if listing_details:
@@ -641,9 +642,7 @@ if __name__ == "__main__":
                                 **data,
                                 **listing_details
                             }
-
-                            save_property(listing_details, run.id)
-
+                            save_property(combined_property, run.id)
 
                     try:
                         run.status = 'completed'
