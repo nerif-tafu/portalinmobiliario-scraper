@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import desc
 import os
 from markupsafe import Markup
+from web.utils import convert_to_embed_src
 
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL')
@@ -212,6 +213,11 @@ def remove_preference():
 def format_number(value):
     """Format number with thousands separator"""
     return "{:,.0f}".format(value) if value else ""
+
+@app.template_filter('convert_to_embed')
+def convert_to_embed_filter(url):
+    """Template filter to convert Google Maps URL to embed URL"""
+    return convert_to_embed_src(url)
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=3000) 
