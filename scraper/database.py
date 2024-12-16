@@ -11,7 +11,7 @@ SessionFactory = sessionmaker(bind=engine)
 Session = scoped_session(SessionFactory)
 
 # Export Session for use in other modules
-__all__ = ['Session', 'get_db_session', 'save_properties', 'save_single_property', 'is_duplicate_listing']
+__all__ = ['Session', 'get_db_session', 'save_property', 'save_single_property', 'is_duplicate_listing']
 
 def get_db_session():
     """Get a scoped database session"""
@@ -42,88 +42,62 @@ def is_duplicate_listing(session, url):
     """Check if a listing URL has been scraped before"""
     return session.query(Property).filter(Property.original_url == url).first() is not None
 
-def save_properties(properties, run_id):
-    """Save scraped properties to database"""
-    if not properties:
-        print("No properties to save")
-        return []
-
-    if not isinstance(properties, list):
-        print(f"Error: properties must be a list, got {type(properties)}")
-        print(f"Properties value: {properties}")
-        return []
+def save_property(prop_data, run_id):
+    """Save a single property to database"""
+    if not prop_data:
+        print("No property data to save")
+        return None
 
     session = Session()
-    new_properties = []
-    skipped_count = 0
-
     try:
-        for i, prop_data in enumerate(properties):
-            try:
-                # Create property
-                if not isinstance(prop_data, dict):
-                    print(f"Error: property data must be a dict, got {type(prop_data)}")
-                    print(f"Property data at index {i}: {prop_data}")
-                    continue
+        # Create property
+        property = Property(
+            run_id=run_id,
+            location=prop_data.get('location', ''),
+            title=prop_data.get('title', ''),
+            price=prop_data.get('price', 0),
+            common_costs=prop_data.get('common_costs'),
+            total_price=prop_data.get('total_price'),
+            total_area=clean_area(prop_data.get('total_area')),
+            floor=prop_data.get('floor'),
+            total_floors=prop_data.get('total_floors'),
+            furnished=prop_data.get('furnished'),
+            has_gym=prop_data.get('has_gym'),
+            original_url=prop_data.get('link', ''),
+            google_maps_link=prop_data.get('google_maps_link')
+        )
+        session.add(property)
+        session.flush()  # Get property.id
 
-                property = Property(
-                    run_id=run_id,
-                    location=prop_data.get('location', ''),
-                    title=prop_data.get('title', ''),
-                    price=prop_data.get('price', 0),
-                    common_costs=prop_data.get('common_costs'),
-                    total_price=prop_data.get('total_price'),
-                    total_area=clean_area(prop_data.get('total_area')),  # Use clean_area function
-                    floor=prop_data.get('floor'),
-                    total_floors=prop_data.get('total_floors'),
-                    furnished=prop_data.get('furnished'),
-                    has_gym=prop_data.get('has_gym'),
-                    original_url=prop_data.get('link', ''),
-                    google_maps_link=prop_data.get('google_maps_link')
-                )
-                session.add(property)
-                session.flush()  # Get property.id
+        # Add images
+        for image_url in prop_data.get('images', []):
+            image = PropertyImage(
+                property_id=property.id,
+                image_url=image_url
+            )
+            session.add(image)
 
-                # Add images
-                for image_url in prop_data.get('images', []):
-                    image = PropertyImage(
-                        property_id=property.id,
-                        image_url=image_url
-                    )
-                    session.add(image)
-
-                # Add metro stations if they exist
-                metro_stations = prop_data.get('metro_station', []) or []  # Convert None to empty list
-                for station_data in metro_stations:
-                    station = MetroStation(
-                        property_id=property.id,
-                        name=station_data['name'],
-                        walking_minutes=station_data['walking_minutes'],
-                        distance_meters=station_data['distance_meters']
-                    )
-                    session.add(station)
-
-                new_properties.append(property)
-
-            except Exception as e:
-                print(f"Error processing property at index {i}:")
-                print(f"Property data: {prop_data}")
-                print(f"Error: {str(e)}")
-                raise
+        # Add metro stations
+        metro_stations = prop_data.get('metro_station', []) or []
+        for station_data in metro_stations:
+            station = MetroStation(
+                property_id=property.id,
+                name=station_data['name'],
+                walking_minutes=station_data['walking_minutes'],
+                distance_meters=station_data['distance_meters']
+            )
+            session.add(station)
 
         session.commit()
-        print(f"Saved {len(new_properties)} new properties (skipped {skipped_count} duplicates)")
-        return new_properties
+        print(f"Successfully saved property: {prop_data.get('title')}")
+        return property
 
     except Exception as e:
         session.rollback()
-        print(f"Error in save_properties:")
-        print(f"Properties type: {type(properties)}")
-        print(f"Properties value: {properties}")
-        print(f"Error: {str(e)}")
+        print(f"Error saving property: {str(e)}")
         raise
     finally:
-        session.close() 
+        session.close()
 
 def save_single_property(prop_data, run_id):
     """Save a single property to database"""

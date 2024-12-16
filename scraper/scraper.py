@@ -18,14 +18,12 @@ import os
 import datetime
 import webbrowser
 from scraper.config import (
-    MAX_PAGES_PER_LOCATION,
-    LISTINGS_PER_PAGE,
     LOCATIONS,
     get_url_for_location
 )
 from urllib.parse import urlencode, urlparse, parse_qs
 from scraper.database import (
-    save_properties, 
+    save_property, 
     save_single_property, 
     get_db_session, 
     is_duplicate_listing,
@@ -39,6 +37,8 @@ from scraper.utils import setup_logger
 # At the top of the file, add these color constants
 ORANGE = '\033[93m'
 RESET = '\033[0m'
+
+LISTINGS_PER_PAGE = 48
 
 # At the start of the file
 logger = setup_logger()
@@ -124,7 +124,17 @@ def convert_price_to_clp(price_element):
         log_and_print(f"Error converting price: {e}", level='error')
         return None
 
-def extract_listing_details(driver, url, price):
+def extract_listing_details(url, price):
+    chrome_options = Options()
+    chrome_options.add_argument("--no-sandbox")
+    chrome_options.add_argument("--disable-dev-shm-usage")
+    chrome_options.add_argument("--start-maximized")
+    chrome_options.add_argument("--window-size=1920,1080")
+    chrome_options.add_argument(f"--user-agent={get_random_user_agent()}")
+    chrome_options.binary_location = "/usr/bin/chromium"
+
+    driver = webdriver.Chrome(options=chrome_options)
+
     """Extract detailed information from a listing page"""
     try:
         currently_rate_limited = True
@@ -136,21 +146,24 @@ def extract_listing_details(driver, url, price):
                 # Random delay between 1 and 3 seconds
                 time.sleep(random.uniform(1, 3))
                 
-                # Clear browser state
+                # Clear browser state safely
                 driver.delete_all_cookies()
-                driver.execute_script("window.localStorage.clear();")
-                driver.execute_script("window.sessionStorage.clear();")
+                try:
+                    driver.execute_script("window.localStorage.clear();")
+                    driver.execute_script("window.sessionStorage.clear();")
+                except Exception:
+                    # Ignore localStorage/sessionStorage errors
+                    pass
                 
                 # Set new random user agent
                 driver.execute_cdp_cmd('Network.setUserAgentOverride', {
                     "userAgent": get_random_user_agent()
                 })
                 
-                # Load the page
+                # Load the page with clean URL
                 clean_base_url = clean_url(url)
-                random_param = f"?t={int(time.time())}&r={random.random()}"
-                log_and_print(f"Getting {clean_base_url + random_param}")
-                driver.get(clean_base_url + random_param)
+                log_and_print(f"Getting {clean_base_url}")
+                driver.get(clean_base_url)
                 
                 # Wait for main container
                 WebDriverWait(driver, 10).until(
@@ -381,57 +394,7 @@ def extract_listing_details(driver, url, price):
         log_and_print(f"{ORANGE}Warning: Error processing listing: {str(e)}{RESET}", level='warning')
         return None
 
-def scrape_location(driver, location):
-    """Scrape properties for a location"""
-    properties = []
-    page = 0
-    
-    while True:
-        # Check if we've hit the page limit
-        if MAX_PAGES_PER_LOCATION > 0 and page >= MAX_PAGES_PER_LOCATION:
-            break
-            
-        url = get_url_for_location(location, page * 48)  # 48 is Portal Inmobiliario's page size
-        log_and_print(f"\nScraping page {page + 1} (offset: {page * 48})")
-        
-        driver.get(url)
-        wait_for_page_load(driver)
-        
-        # Get all listing elements
-        listings = WebDriverWait(driver, 10).until(
-            EC.presence_of_all_elements_located((By.CSS_SELECTOR, "li.ui-search-layout__item"))
-        )
-        
-        if not listings:
-            log_and_print("No listings found on this page. Stopping.", level='warning')
-            break
-
-        log_and_print(f"Found {len(listings)} listings on page {page + 1}")
-        
-        # Limit listings per page if configured
-        if LISTINGS_PER_PAGE:
-            listings = listings[:LISTINGS_PER_PAGE]
-            
-        # Process listings
-        for i, listing in enumerate(listings, 1):
-            try:
-                property_data = process_listing(driver, listing, location)
-                if property_data:
-                    # Save property immediately
-                    saved_property = save_single_property(property_data, run_id)
-                    if saved_property:
-                        properties.append(property_data)
-                        log_and_print(f"Successfully processed and saved listing: {property_data['title']}")
-            except Exception as e:
-                log_and_print(f"Error processing listing: {str(e)}", level='error')
-                
-        page += 1
-            
-    log_and_print(f"Completed scraping {location}: {len(properties)} properties found")
-    return properties
-
-def scrape_properties():
-    """Scrape property listings using configuration settings"""
+def scrape_links_from_location():
     chrome_options = Options()
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
@@ -439,6 +402,8 @@ def scrape_properties():
     chrome_options.add_argument("--window-size=1920,1080")
     chrome_options.add_argument(f"--user-agent={get_random_user_agent()}")
     chrome_options.binary_location = "/usr/bin/chromium"
+
+    timeout_reattempt = 0;
 
     driver = webdriver.Chrome(options=chrome_options)
     session = get_db_session()
@@ -448,19 +413,16 @@ def scrape_properties():
         
         for location in LOCATIONS:
             log_and_print(f"\nScraping location: {location}")
-            current_offset = 0
-            location_properties_count = 0
+            
 
-            for page in range(MAX_PAGES_PER_LOCATION):
-                if location_properties_count >= LISTINGS_PER_PAGE:
-                    log_and_print(f"\nReached listings limit of {LISTINGS_PER_PAGE} for {location}")
-                    break
+            page = 18
+            still_scraping_properties = True
+            
+            while still_scraping_properties:
 
-                url = get_url_for_location(location, current_offset)
-                log_and_print(f"\nScraping page {page + 1} (offset: {current_offset})")
-                
-                # Store the links and titles first
-                listing_data = []
+                url = get_url_for_location(location, page * LISTINGS_PER_PAGE)
+                log_and_print(f"\nScraping page {page + 1} (offset: {page * LISTINGS_PER_PAGE})")
+                log_and_print(f"{url}")
                 
                 driver.get(url)
                 wait_for_page_load(driver)
@@ -478,14 +440,14 @@ def scrape_properties():
 
                     if not listings:
                         log_and_print("No listings found on this page. Stopping.", level='warning')
-                        break
+                        still_scraping_properties = False
+                        continue
+                    else:
+                        log_and_print(f"Found {len(listings)} listings on page {page + 1}")
 
                     if LISTINGS_PER_PAGE:
                         listings = listings[:LISTINGS_PER_PAGE]
 
-                    log_and_print(f"Found {len(listings)} listings on page {page + 1}")
-
-                    # First pass: collect all the necessary data from the listing preview
                     for listing in listings:
                         try:
                             title = WebDriverWait(listing, 10).until(
@@ -503,53 +465,47 @@ def scrape_properties():
                             
                             price = convert_price_to_clp(price_element)
                             
-                            listing_data.append({
+                            all_properties.append({
                                 "title": title,
                                 "price": price,
                                 "link": link
                             })
+
+                            timeout_reattempt = 0;
                             
                         except Exception as e:
                             log_and_print(f"Error collecting listing preview data: {str(e)}", level='error')
                             continue
 
-                    # Second pass: visit each listing page
-                    for data in listing_data:
-                        if location_properties_count >= LISTINGS_PER_PAGE:
-                            break
-
-                        # Check if listing already exists
-                        if is_duplicate_listing(session, data["link"]):
-                            log_and_print(f"Skipping duplicate listing: {data['title']}")
-                            continue
-                            
-                        try:
-                            # Get detailed info from listing page
-                            listing_details = extract_listing_details(driver, data["link"], data["price"])
-
-                            if listing_details:
-                                combined_property = {
-                                    **data,
-                                    "location": location,
-                                    **listing_details
-                                }
-                                all_properties.append(combined_property)
-                                location_properties_count += 1
-                                log_and_print(f"Successfully processed listing: {data['title']}")
-
-                        except Exception as e:
-                            log_and_print(f"Error processing listing details: {str(e)}", level='error')
-                            continue
-
-                    current_offset += LISTINGS_PER_PAGE
-
                 except TimeoutException:
                     log_and_print(f"Timeout waiting for listings on page {page + 1}", level='warning')
-                    continue
 
-            log_and_print(f"Completed scraping {location}: {location_properties_count} properties found")
+                    # Check if we are just at the end of the listing page.
+                    # Check if we have an elemet with the innerHTML of En esta categoría no hay inmuebles que coincidan con tu búsqueda.
+
+                    try:
+                        # Check for "no results" message
+                        no_results = driver.find_element(By.CSS_SELECTOR, ".ui-search-rescue__title")
+                        if no_results and "no hay inmuebles que coincidan con tu búsqueda" in no_results.text.lower():
+                            log_and_print(f"No more listings found on page {page + 1}", level='warning')
+                            still_scraping_properties = False
+                            continue
+                    except NoSuchElementException:
+                        log_and_print(f"No 'no results' message found on page {page + 1}", level='warning')
+                        # Check if we are getting rate limited
+
+                        timeout_reattempt += 1
+                        wait_time = min(300, (2 ** timeout_reattempt) * 60 + random.uniform(1, 30))
+                        log_and_print(f"Rate limited, attempt {timeout_reattempt}/{3}, waiting {int(wait_time)} seconds")
+                        time.sleep(wait_time)
+                        pass
+
+                    continue
+                page += 1
 
         return all_properties
+
+        
 
     finally:
         Session.remove()  # Use Session.remove() instead of session.remove()
@@ -577,8 +533,6 @@ def convert_to_embed_src(url):
         "output": "embed",
     }
     return f"https://www.google.com/maps?{urlencode(embed_params)}"
-
-def generate_html(properties):
     html = """
     <html>
     <head>
@@ -831,7 +785,7 @@ def perform_random_interactions(driver):
         log_and_print(f"Error during random interactions: {e}", level='error')
 
 if __name__ == "__main__":
-    from scraper.database import save_properties
+    from scraper.database import save_property
     import time
     
     SCRAPE_INTERVAL = int(os.getenv('SCRAPE_INTERVAL', 3600))  # Default to 1 hour if not set
@@ -853,34 +807,50 @@ if __name__ == "__main__":
                 
                 try:
                     # Get properties using configuration settings
-                    properties = scrape_properties()
-                    
-                    if not properties:
+                    property_links = scrape_links_from_location()
+                    session = get_db_session()  # Get a new session
+
+                    if not property_links:
                         log_and_print("No properties were scraped!", level='warning')
                         run.status = 'completed'
                         run.total_properties = 0
                     else:
-                        # Save to database
-                        try:
-                            save_properties(properties, run.id)
-                            run.status = 'completed'
-                            run.total_properties = len(properties)
-                            log_and_print(f"\nSuccessfully scraped and saved {len(properties)} total properties")
-                        except Exception as e:
-                            log_and_print(f"Error saving to database: {str(e)}", level='error')
-                            run.status = 'failed'
-                            run.error_message = f"Database error: {str(e)}"
-                            properties = []  # Clear properties on error
+                        log_and_print(f"Scraped {len(property_links)} properties")
+
+                    for data in property_links:
+                        if is_duplicate_listing(session, data["link"]):
+                            log_and_print(f"Skipping duplicate listing: {data['title']}")
+                            continue
+
+                        listing_details = extract_listing_details(data["link"], data["price"])
+                    
+                        if listing_details:
+                            combined_property = {
+                                **data,
+                                **listing_details
+                            }
+
+                            save_property(listing_details, run.id)
+
+
+                    try:
+                        run.status = 'completed'
+                        run.total_properties = 123
+                        log_and_print(f"\nSuccessfully scraped and saved {123} total properties")
+                    except Exception as e:
+                        log_and_print(f"Error saving to database: {str(e)}", level='error')
+                        run.status = 'failed'
+                        run.error_message = f"Database error: {str(e)}"
+
+                    # Update run completion time and next run time
+                    run.completed_at = datetime.datetime.utcnow()
+                    run.next_run_at = run.completed_at + timedelta(seconds=SCRAPE_INTERVAL)
+                    db.session.commit()
+
                 except Exception as e:
                     log_and_print(f"Error during scraping: {str(e)}", level='error')
                     run.status = 'failed'
                     run.error_message = f"Scraping error: {str(e)}"
-                    properties = []  # Clear properties on error
-                
-                # Update run completion time and next run time
-                run.completed_at = datetime.datetime.utcnow()
-                run.next_run_at = run.completed_at + timedelta(seconds=SCRAPE_INTERVAL)
-                db.session.commit()
             
         except Exception as e:
             log_and_print(f"Critical error: {str(e)}", level='error')

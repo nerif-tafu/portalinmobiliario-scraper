@@ -5,6 +5,7 @@ from web.models import db, Run, Property, PropertyImage, MetroStation, PropertyP
 from datetime import datetime, timedelta
 from sqlalchemy import desc
 import os
+from markupsafe import Markup
 
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL')
@@ -45,9 +46,10 @@ class PropertyView(ModelView):
         'total_floors',
         'furnished', 
         'has_gym',
+        'google_maps_link',
         'created_at'
     )
-    column_searchable_list = ['title', 'location', 'original_url']
+    column_searchable_list = ['title', 'location', 'original_url', 'google_maps_link']
     column_filters = [
         'location', 
         'furnished', 
@@ -61,12 +63,23 @@ class PropertyView(ModelView):
         price = getattr(model, name)
         return f"${price:,.0f}" if price else ""
     
+    def _maps_link_formatter(view, context, model, name):
+        link = getattr(model, name)
+        if link:
+            return Markup(f'<a href="{link}" target="_blank">View on Maps</a>')
+        return ''
+    
     column_formatters = {
         'price': _price_formatter,
         'common_costs': _price_formatter,
         'total_price': _price_formatter,
-        'created_at': lambda v, c, m, p: m.created_at.strftime('%Y-%m-%d %H:%M:%S')
+        'created_at': lambda v, c, m, p: m.created_at.strftime('%Y-%m-%d %H:%M:%S'),
+        'google_maps_link': _maps_link_formatter
     }
+    
+    # Allow HTML in the google_maps_link column
+    can_view_details = True
+    column_display_pk = True
 
 class PropertyImageView(ModelView):
     column_list = ('property', 'image_url')

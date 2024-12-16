@@ -2,16 +2,13 @@
 
 import os
 
-# Scraping limits (per location)
-MAX_PAGES_PER_LOCATION = int(os.getenv('MAX_PAGES_PER_LOCATION', 1))
-
 # Search filters
 LOCATIONS = [
     "providencia-metropolitana",
-    "nunoa-metropolitana",
-    "las-condes-metropolitana",
-    "la-reina-metropolitana",
-    "vitacura-metropolitana",
+    # "nunoa-metropolitana",
+    # "las-condes-metropolitana",
+    # "la-reina-metropolitana",
+    # "vitacura-metropolitana",
     # "lo-barnechea-metropolitana"
 ]
 MIN_PRICE_CLP = 0
