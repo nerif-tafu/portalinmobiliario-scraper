@@ -45,21 +45,27 @@
             min-width: 200px;
         }
         .stats {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 10px;
+            display: flex;
+            gap: 20px;
             margin: 20px 0;
+            align-items: center;
         }
         .stat-card {
-            background: #f8f9fa;
-            padding: 15px;
-            border-radius: 4px;
+            flex:1;
+            background: #f5f5f5;
+            padding: 15px 25px;
+            border-radius: 8px;
             text-align: center;
+            min-width: 150px;
+            display: flex;
+            flex-direction: row;
+            align-items: center;
+            justify-content: center;
         }
         .stat-value {
-            font-size: 1.5em;
+            font-size: 24px;
             font-weight: bold;
-            color: #2c5282;
+            color: #2c3e50;
         }
         /* Property styles */
         .property { 
@@ -204,6 +210,16 @@
         .property.hidden {
             display: none;
         }
+        .status {
+            flex: 1;
+            background: #f5f5f5;
+            padding: 15px 25px;
+            border-radius: 8px;
+            min-width: 300px;
+            display: flex;
+            align-items: center;
+            height: 100%;
+        }
     </style>
     <script>
         function updateStatus() {
@@ -298,17 +314,6 @@
     <h1>Property Scraper</h1>
     
     <div class="nav">
-        <div class="run-selector">
-            <label for="run-select">View Run:</label>
-            <select id="run-select" onchange="goToRun()">
-                <option value="">Select a run...</option>
-                {% for run in runs %}
-                <option value="{{ run.id }}" {% if run.id == latest_run.id %}selected{% endif %}>
-                    Run #{{ run.id }} ({{ run.started_at.strftime('%Y-%m-%d %H:%M') }}) - {{ run.total_properties or 0 }} properties
-                </option>
-                {% endfor %}
-            </select>
-        </div>
         <div class="filter-buttons">
             <button class="filter-button" onclick="toggleFilter('liked')" id="hide-liked">
                 Hide Liked
@@ -325,17 +330,12 @@
 
     <div class="stats">
         <div class="stat-card">
-            <div class="stat-value">{{ total_runs }}</div>
-            <div>Total Runs</div>
+            <h2 class="stat-value">{{ total_properties }} Total Properties</h2>
         </div>
-        <div class="stat-card">
-            <div class="stat-value">{{ total_properties }}</div>
-            <div>Total Properties</div>
-        </div>
-    </div>
 
-    <div id="status" class="status">
-        Loading status...
+        <div id="status" class="status">
+            Loading status...
+        </div>
     </div>
 
     {% for location, properties in properties_by_location.items() %}
@@ -379,6 +379,7 @@
                 <div class="attribute"><strong>Floor:</strong> {{ property.floor }} of {{ property.total_floors }}</div>
                 <div class="attribute"><strong>Furnished:</strong> <span class="status-{{ 'yes' if property.furnished else 'no' }}">{{ 'Yes' if property.furnished else 'No' }}</span></div>
                 <div class="attribute"><strong>Gym:</strong> <span class="status-{{ 'yes' if property.has_gym else 'no' }}">{{ 'Yes' if property.has_gym else 'No' }}</span></div>
+                <div class="attribute"><strong>Added:</strong> {{ property.run.started_at.strftime('%Y-%m-%d %H:%M') }}</div>
                 <div class="attribute metro-stations">
                     <strong>Metro Stations:</strong>
                     {% if property.metro_stations %}
@@ -391,7 +392,7 @@
                     <p>No metro stations nearby</p>
                     {% endif %}
                 </div>
-                <div class="attribute"><strong>Added:</strong> {{ property.run.started_at.strftime('%Y-%m-%d %H:%M') }}</div>
+                
             </div>
             <div class="property-actions">
                 <button class="action-button like-button {% if property.preference and property.preference.status == 'liked' %}active{% endif %}"
