@@ -5,10 +5,10 @@ import os
 # Search filters
 LOCATIONS = [
     "providencia-metropolitana",
-    # "nunoa-metropolitana",
-    # "las-condes-metropolitana",
-    # "la-reina-metropolitana",
-    # "vitacura-metropolitana",
+    "nunoa-metropolitana",
+    "las-condes-metropolitana",
+    "la-reina-metropolitana",
+    "vitacura-metropolitana",
     # "lo-barnechea-metropolitana"
 ]
 MIN_PRICE_CLP = 0

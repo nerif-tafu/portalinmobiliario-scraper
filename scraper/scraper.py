@@ -416,7 +416,7 @@ def scrape_links_from_location():
             log_and_print(f"\nScraping location: {location}")
             
 
-            page = 18
+            page = 0
             still_scraping_properties = True
             
             while still_scraping_properties:
