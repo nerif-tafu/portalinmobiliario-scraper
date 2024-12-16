@@ -16,14 +16,46 @@ admin = Admin(app, name='Property Scraper', template_mode='bootstrap3')
 
 # Custom ModelViews
 class RunView(ModelView):
-    column_list = ('id', 'started_at', 'completed_at', 'status', 'total_properties')
+    column_list = (
+        'id', 
+        'started_at', 
+        'completed_at', 
+        'next_run_at', 
+        'status', 
+        'total_properties', 
+        'error_message'
+    )
     column_searchable_list = ['status']
-    column_filters = ['status', 'started_at']
+    column_filters = ['status', 'started_at', 'completed_at']
+    column_formatters = {
+        'started_at': lambda v, c, m, p: m.started_at.strftime('%Y-%m-%d %H:%M:%S'),
+        'completed_at': lambda v, c, m, p: m.completed_at.strftime('%Y-%m-%d %H:%M:%S') if m.completed_at else '',
+        'next_run_at': lambda v, c, m, p: m.next_run_at.strftime('%Y-%m-%d %H:%M:%S') if m.next_run_at else ''
+    }
 
 class PropertyView(ModelView):
-    column_list = ('title', 'location', 'price', 'total_price', 'total_area', 'furnished', 'has_gym')
-    column_searchable_list = ['title', 'location']
-    column_filters = ['location', 'furnished', 'has_gym']
+    column_list = (
+        'title', 
+        'location', 
+        'price', 
+        'common_costs',
+        'total_price', 
+        'total_area', 
+        'floor',
+        'total_floors',
+        'furnished', 
+        'has_gym',
+        'created_at'
+    )
+    column_searchable_list = ['title', 'location', 'original_url']
+    column_filters = [
+        'location', 
+        'furnished', 
+        'has_gym',
+        'price',
+        'total_area',
+        'created_at'
+    ]
     
     def _price_formatter(view, context, model, name):
         price = getattr(model, name)
@@ -31,23 +63,52 @@ class PropertyView(ModelView):
     
     column_formatters = {
         'price': _price_formatter,
-        'total_price': _price_formatter
+        'common_costs': _price_formatter,
+        'total_price': _price_formatter,
+        'created_at': lambda v, c, m, p: m.created_at.strftime('%Y-%m-%d %H:%M:%S')
     }
 
 class PropertyImageView(ModelView):
     column_list = ('property', 'image_url')
     column_searchable_list = ['image_url']
+    column_filters = ['property.location']
 
 class MetroStationView(ModelView):
-    column_list = ('property', 'name', 'walking_minutes', 'distance_meters')
+    column_list = (
+        'property', 
+        'name', 
+        'walking_minutes', 
+        'distance_meters'
+    )
     column_searchable_list = ['name']
-    column_filters = ['name', 'walking_minutes']
+    column_filters = [
+        'name', 
+        'walking_minutes',
+        'property.location'
+    ]
+    column_sortable_list = [
+        'walking_minutes', 
+        'distance_meters'
+    ]
+
+class PropertyPreferenceView(ModelView):
+    column_list = (
+        'property_url',
+        'status',
+        'created_at'
+    )
+    column_searchable_list = ['property_url', 'status']
+    column_filters = ['status', 'created_at']
+    column_formatters = {
+        'created_at': lambda v, c, m, p: m.created_at.strftime('%Y-%m-%d %H:%M:%S')
+    }
 
 # Add views
 admin.add_view(RunView(Run, db.session))
 admin.add_view(PropertyView(Property, db.session))
 admin.add_view(PropertyImageView(PropertyImage, db.session))
 admin.add_view(MetroStationView(MetroStation, db.session))
+admin.add_view(PropertyPreferenceView(PropertyPreference, db.session))
 
 @app.route('/status')
 def status():
