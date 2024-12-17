@@ -129,271 +129,286 @@ def extract_listing_details(url, price):
     chrome_options = Options()
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
-    chrome_options.add_argument("--start-maximized")
+    chrome_options.add_argument("--disable-gpu")
+    chrome_options.add_argument("--disable-software-rasterizer")
     chrome_options.add_argument("--window-size=1920,1080")
     chrome_options.add_argument(f"--user-agent={get_random_user_agent()}")
     chrome_options.binary_location = "/usr/bin/chromium"
 
-    driver = webdriver.Chrome(options=chrome_options)
+    max_retries = 3
+    retry_count = 0
 
-    """Extract detailed information from a listing page"""
-    try:
-        currently_rate_limited = True
-        attempts = 0
-        max_attempts = 3
-
-        while currently_rate_limited and attempts < max_attempts:       
+    while retry_count < max_retries:
+        try:
+            driver = webdriver.Chrome(options=chrome_options)
+            """Extract detailed information from a listing page"""
             try:
-                # Random delay between 1 and 3 seconds
-                time.sleep(random.uniform(1, 3))
+                currently_rate_limited = True
+                attempts = 0
+                max_attempts = 3
+
+                while currently_rate_limited and attempts < max_attempts:       
+                    try:
+                        # Random delay between 1 and 3 seconds
+                        time.sleep(random.uniform(1, 3))
+                        
+                        # Clear browser state safely
+                        driver.delete_all_cookies()
+                        try:
+                            driver.execute_script("window.localStorage.clear();")
+                            driver.execute_script("window.sessionStorage.clear();")
+                        except Exception:
+                            # Ignore localStorage/sessionStorage errors
+                            pass
+                        
+                        # Set new random user agent
+                        driver.execute_cdp_cmd('Network.setUserAgentOverride', {
+                            "userAgent": get_random_user_agent()
+                        })
+                        
+                        # Load the page with clean URL
+                        clean_base_url = clean_url(url)
+                        log_and_print(f"Getting {clean_base_url}")
+                        driver.get(clean_base_url)
+                        
+                        # Wait for main container
+                        WebDriverWait(driver, 10).until(
+                            EC.presence_of_element_located((By.CSS_SELECTOR, "#ui-pdp-main-container"))
+                        )
+                        
+                        # Perform random interactions
+                        perform_random_interactions(driver)
+                        
+                        currently_rate_limited = False
+                        
+                    except TimeoutException:
+                        attempts += 1
+                        wait_time = min(300, (2 ** attempts) * 60 + random.uniform(1, 30))
+                        log_and_print(f"Rate limited, attempt {attempts}/{max_attempts}, waiting {int(wait_time)} seconds")
+                        time.sleep(wait_time)
                 
-                # Clear browser state safely
-                driver.delete_all_cookies()
+                if currently_rate_limited:
+                    return None
+
+                # Initialize details with empty values
+                details = {
+                    'images': [],
+                    'full_address': None,
+                    'google_maps_link': None,
+                    'metro_station': None,
+                    'common_costs': None,
+                    'has_gym': False,
+                    'floor': None,
+                    'total_floors': None,
+                    'furnished': None,
+                    'total_area': None,
+                    'apartment_type': None,
+                    'total_price': None,
+                    'description': None
+                }
+
+                # Get all images
                 try:
-                    driver.execute_script("window.localStorage.clear();")
-                    driver.execute_script("window.sessionStorage.clear();")
-                except Exception:
-                    # Ignore localStorage/sessionStorage errors
-                    pass
-                
-                # Set new random user agent
-                driver.execute_cdp_cmd('Network.setUserAgentOverride', {
-                    "userAgent": get_random_user_agent()
-                })
-                
-                # Load the page with clean URL
-                clean_base_url = clean_url(url)
-                log_and_print(f"Getting {clean_base_url}")
-                driver.get(clean_base_url)
-                
-                # Wait for main container
-                WebDriverWait(driver, 10).until(
-                    EC.presence_of_element_located((By.CSS_SELECTOR, "#ui-pdp-main-container"))
-                )
-                
-                # Perform random interactions
-                perform_random_interactions(driver)
-                
-                currently_rate_limited = False
-                
-            except TimeoutException:
-                attempts += 1
-                wait_time = min(300, (2 ** attempts) * 60 + random.uniform(1, 30))
-                log_and_print(f"Rate limited, attempt {attempts}/{max_attempts}, waiting {int(wait_time)} seconds")
-                time.sleep(wait_time)
-        
-        if currently_rate_limited:
-            return None
+                    images = driver.find_elements(By.CSS_SELECTOR, ".ui-pdp-image.ui-pdp-gallery__figure__image")
+                    details['images'] = [img.get_attribute('src') for img in images if img.get_attribute('src')]
+                except Exception as e:
+                    log_and_print(f"Error getting images: {e}", level='error')
 
-        # Initialize details with empty values
-        details = {
-            'images': [],
-            'full_address': None,
-            'google_maps_link': None,
-            'metro_station': None,
-            'common_costs': None,
-            'has_gym': False,
-            'floor': None,
-            'total_floors': None,
-            'furnished': None,
-            'total_area': None,
-            'apartment_type': None,
-            'total_price': None,
-            'description': None
-        }
-
-        # Get all images
-        try:
-            images = driver.find_elements(By.CSS_SELECTOR, ".ui-pdp-image.ui-pdp-gallery__figure__image")
-            details['images'] = [img.get_attribute('src') for img in images if img.get_attribute('src')]
-        except Exception as e:
-            log_and_print(f"Error getting images: {e}", level='error')
-
-        # Get specifications from the tables
-        try:
-            # First attempt to find tables
-            tables_found = False
-            refresh_attempts = 0
-            max_refresh_attempts = 3
-
-            while not tables_found and refresh_attempts < max_refresh_attempts:
+                # Get specifications from the tables
                 try:
-                    driver.refresh()
-                    time.sleep(random.uniform(2, 4))
-                    
-                    # Add random interactions after refresh
-                    perform_random_interactions(driver)
-                    
-                    # Wait for tables to be present
-                    tables = WebDriverWait(driver, 10).until(
-                        EC.presence_of_element_located((By.CSS_SELECTOR, ".andes-table__body"))
-                    )
-                    
-                    rows = driver.find_elements(By.CSS_SELECTOR, ".andes-table__row")
-                    if len(rows) > 0:
-                        tables_found = True
-                    else:
-                        log_and_print(f"Tables found but no rows present. Attempt {refresh_attempts + 1}/{max_refresh_attempts}")
-                        driver.refresh()
-                        time.sleep(random.uniform(2, 4))
-                        refresh_attempts += 1
-                except TimeoutException:
-                    log_and_print(f"Tables not found. Attempting refresh. Attempt {refresh_attempts + 1}/{max_refresh_attempts}")
-                    driver.refresh()
-                    time.sleep(random.uniform(2, 4))
-                    refresh_attempts += 1
+                    # First attempt to find tables
+                    tables_found = False
+                    refresh_attempts = 0
+                    max_refresh_attempts = 3
 
-            if not tables_found:
-                log_and_print(f"{ORANGE}Warning: Failed to load tables after all refresh attempts{RESET}", level='warning')
-                return None
+                    while not tables_found and refresh_attempts < max_refresh_attempts:
+                        try:
+                            driver.refresh()
+                            time.sleep(random.uniform(2, 4))
+                            
+                            # Add random interactions after refresh
+                            perform_random_interactions(driver)
+                            
+                            # Wait for tables to be present
+                            tables = WebDriverWait(driver, 10).until(
+                                EC.presence_of_element_located((By.CSS_SELECTOR, ".andes-table__body"))
+                            )
+                            
+                            rows = driver.find_elements(By.CSS_SELECTOR, ".andes-table__row")
+                            if len(rows) > 0:
+                                tables_found = True
+                            else:
+                                log_and_print(f"Tables found but no rows present. Attempt {refresh_attempts + 1}/{max_refresh_attempts}")
+                                driver.refresh()
+                                time.sleep(random.uniform(2, 4))
+                                refresh_attempts += 1
+                        except TimeoutException:
+                            log_and_print(f"Tables not found. Attempting refresh. Attempt {refresh_attempts + 1}/{max_refresh_attempts}")
+                            driver.refresh()
+                            time.sleep(random.uniform(2, 4))
+                            refresh_attempts += 1
 
-            # Process the tables as before
-            for row in rows:
-                try:
-                    header = row.find_element(By.CSS_SELECTOR, ".andes-table__header__container").get_attribute("innerHTML")
-                    value = row.find_element(By.CSS_SELECTOR, ".andes-table__column--value").get_attribute("innerHTML")
+                    if not tables_found:
+                        log_and_print(f"{ORANGE}Warning: Failed to load tables after all refresh attempts{RESET}", level='warning')
+                        return None
 
-                    mapping = {
-                        'Superficie total': ('total_area', value.replace("m²", "")),
-                        'Número de piso de la unidad': ('floor', value),
-                        'Cantidad de pisos': ('total_floors', value),
-                        'Tipo de departamento': ('apartment_type', value),
-                        'Amoblado': ('furnished', value == 'Sí'),
-                        'Gimnasio': ('has_gym', value == 'Sí'),
-                        'Dormitorios': ('bedrooms', value),
-                        'Baños': ('bathrooms', value),
-                        'Estacionamientos': ('parking_spots', value),
-                        'Bodegas': ('storage_units', value),
-                    }
-                    
-                    if header in mapping:
-                        key, val = mapping[header]
-                        if val is None or val == "":
-                            log_and_print(f"{ORANGE}Warning: Skipping empty value for {key}{RESET}", level='warning')
-                        details[key] = val
+                    # Process the tables as before
+                    for row in rows:
+                        try:
+                            header = row.find_element(By.CSS_SELECTOR, ".andes-table__header__container").get_attribute("innerHTML")
+                            value = row.find_element(By.CSS_SELECTOR, ".andes-table__column--value").get_attribute("innerHTML")
+
+                            mapping = {
+                                'Superficie total': ('total_area', value.replace("m²", "")),
+                                'Número de piso de la unidad': ('floor', value),
+                                'Cantidad de pisos': ('total_floors', value),
+                                'Tipo de departamento': ('apartment_type', value),
+                                'Amoblado': ('furnished', value == 'Sí'),
+                                'Gimnasio': ('has_gym', value == 'Sí'),
+                                'Dormitorios': ('bedrooms', value),
+                                'Baños': ('bathrooms', value),
+                                'Estacionamientos': ('parking_spots', value),
+                                'Bodegas': ('storage_units', value),
+                            }
+                            
+                            if header in mapping:
+                                key, val = mapping[header]
+                                if val is None or val == "":
+                                    log_and_print(f"{ORANGE}Warning: Skipping empty value for {key}{RESET}", level='warning')
+                                details[key] = val
+
+                        except Exception as e:
+                            log_and_print(f"{ORANGE}Warning: Error processing row: {str(e)}{RESET}", level='warning')
+                            continue
 
                 except Exception as e:
-                    log_and_print(f"{ORANGE}Warning: Error processing row: {str(e)}{RESET}", level='warning')
-                    continue
+                    log_and_print(f"Error getting specifications: {str(e)}", level='error')
+                    time.sleep(10)
 
-        except Exception as e:
-            log_and_print(f"Error getting specifications: {str(e)}", level='error')
-            time.sleep(10)
+                try:
+                    metro_station = driver.find_element(By.CSS_SELECTOR, ".andes-tab-content.ui-vip-poi__tab-content")
+                    metro_station_holder = metro_station.find_element(By.XPATH, ".//*[text()='Estaciones de metro']")
+                    if metro_station_holder is None:
+                        log_and_print("No metro station found")
+                        return details
+                    metro_station_holder_parent = metro_station_holder.find_element(By.XPATH, "./..")
+                    metro_station_list = metro_station_holder_parent.find_elements(By.CSS_SELECTOR, ".ui-vip-poi__item")
 
-        try:
-            metro_station = driver.find_element(By.CSS_SELECTOR, ".andes-tab-content.ui-vip-poi__tab-content")
-            metro_station_holder = metro_station.find_element(By.XPATH, ".//*[text()='Estaciones de metro']")
-            if metro_station_holder is None:
-                log_and_print("No metro station found")
-                return details
-            metro_station_holder_parent = metro_station_holder.find_element(By.XPATH, "./..")
-            metro_station_list = metro_station_holder_parent.find_elements(By.CSS_SELECTOR, ".ui-vip-poi__item")
+                    all_metro_stations = []
 
-            all_metro_stations = []
-
-            for station in metro_station_list:
-                metro_station_name = station.find_element(By.CSS_SELECTOR, ".ui-pdp-color--BLACK.ui-pdp-size--XSMALL.ui-pdp-family--REGULAR")
-                metro_station_distance = station.find_element(By.CSS_SELECTOR, ".ui-pdp-color--GRAY.ui-pdp-size--XSMALL.ui-pdp-family--REGULAR")
-                
-                # Parse Spanish format: "10 mins - 751 metros" or "12 mins - 1.523 metros"
-                distance_text = metro_station_distance.text
-                parts = distance_text.split(' - ')  # Split by the dash
-                walking_minutes = parts[0].split(' ')[0]  # Get "10" from "10 mins"
-                distance_meters = parts[1].split(' ')[0].replace('.', '')  # Get "1523" from "1.523"
-                
-                all_metro_stations.append({
-                    'name': metro_station_name.text,
-                    'walking_minutes': walking_minutes,
-                    'distance_meters': distance_meters
-                })
-            details['metro_station'] = all_metro_stations
-            log_and_print(f"Found metro station {details['metro_station']}")
-
-        except NoSuchElementException:
-            log_and_print("No metro stations found.")
-
-        except Exception as e:
-            log_and_print(f"Error getting metro station: {str(e)}", 
-                          level='error', 
-                          color=ORANGE)
-
-        # Get common costs from div
-        try:
-            common_costs = driver.find_element(By.CSS_SELECTOR, ".ui-pdp-color--GRAY.ui-pdp-size--XSMALL.ui-pdp-family--REGULAR.ui-pdp-maintenance-fee-ltr")
-            common_costs_text = common_costs.text.strip()
-            common_costs_text = common_costs_text.replace("Gastos comunes aproximados $", "")
-            common_costs_text = common_costs_text.replace("Gastos comunes desde $", "")
-            common_costs_text = common_costs_text.replace(".", "")
-            common_costs_text = common_costs_text.replace(",", ".")
-            common_costs_text = common_costs_text.strip()
-
-            details['common_costs'] = int(common_costs_text)
-            log_and_print("Found common costs", details['common_costs'])
-
-        except NoSuchElementException:
-            log_and_print("No common costs found")
-
-        except Exception as e:
-            log_and_print(f"Error getting common costs: {str(e)}", level='error')
-
-
-        # Get description
-        try:
-            description = driver.find_element(By.CSS_SELECTOR, ".ui-pdp-description__content").text.strip()
-            details['description'] = description
-        except Exception as e:
-            log_and_print(f"Error getting description: {str(e)}", level='error')
-
-
-        # Get address information
-        try:
-            location_container = WebDriverWait(driver, 10).until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, ".ui-pdp-media.ui-vip-location__subtitle.ui-pdp-color--BLACK"))
-            )
-            address = location_container.find_element(By.CSS_SELECTOR, "p").text.strip()
-            
-            # Click on the map image to load it
-            map_element = WebDriverWait(driver, 10).until(
-                EC.element_to_be_clickable((By.CSS_SELECTOR, "#ui-vip-location__map > div > img"))
-            )
+                    for station in metro_station_list:
+                        metro_station_name = station.find_element(By.CSS_SELECTOR, ".ui-pdp-color--BLACK.ui-pdp-size--XSMALL.ui-pdp-family--REGULAR")
+                        metro_station_distance = station.find_element(By.CSS_SELECTOR, ".ui-pdp-color--GRAY.ui-pdp-size--XSMALL.ui-pdp-family--REGULAR")
                         
-            driver.execute_script("arguments[0].click();", map_element)
+                        # Parse Spanish format: "10 mins - 751 metros" or "12 mins - 1.523 metros"
+                        distance_text = metro_station_distance.text
+                        parts = distance_text.split(' - ')  # Split by the dash
+                        walking_minutes = parts[0].split(' ')[0]  # Get "10" from "10 mins"
+                        distance_meters = parts[1].split(' ')[0].replace('.', '')  # Get "1523" from "1.523"
+                        
+                        all_metro_stations.append({
+                            'name': metro_station_name.text,
+                            'walking_minutes': walking_minutes,
+                            'distance_meters': distance_meters
+                        })
+                    details['metro_station'] = all_metro_stations
+                    log_and_print(f"Found metro station {details['metro_station']}")
+
+                except NoSuchElementException:
+                    log_and_print("No metro stations found.")
+
+                except Exception as e:
+                    log_and_print(f"Error getting metro station: {str(e)}", 
+                                  level='error', 
+                                  color=ORANGE)
+
+                # Get common costs from div
+                try:
+                    common_costs = driver.find_element(By.CSS_SELECTOR, ".ui-pdp-color--GRAY.ui-pdp-size--XSMALL.ui-pdp-family--REGULAR.ui-pdp-maintenance-fee-ltr")
+                    common_costs_text = common_costs.text.strip()
+                    common_costs_text = common_costs_text.replace("Gastos comunes aproximados $", "")
+                    common_costs_text = common_costs_text.replace("Gastos comunes desde $", "")
+                    common_costs_text = common_costs_text.replace(".", "")
+                    common_costs_text = common_costs_text.replace(",", ".")
+                    common_costs_text = common_costs_text.strip()
+
+                    details['common_costs'] = int(common_costs_text)
+                    log_and_print("Found common costs", details['common_costs'])
+
+                except NoSuchElementException:
+                    log_and_print("No common costs found")
+
+                except Exception as e:
+                    log_and_print(f"Error getting common costs: {str(e)}", level='error')
+
+
+                # Get description
+                try:
+                    description = driver.find_element(By.CSS_SELECTOR, ".ui-pdp-description__content").text.strip()
+                    details['description'] = description
+                except Exception as e:
+                    log_and_print(f"Error getting description: {str(e)}", level='error')
+
+
+                # Get address information
+                try:
+                    location_container = WebDriverWait(driver, 10).until(
+                        EC.presence_of_element_located((By.CSS_SELECTOR, ".ui-pdp-media.ui-vip-location__subtitle.ui-pdp-color--BLACK"))
+                    )
+                    address = location_container.find_element(By.CSS_SELECTOR, "p").text.strip()
+                    
+                    # Click on the map image to load it
+                    map_element = WebDriverWait(driver, 10).until(
+                        EC.element_to_be_clickable((By.CSS_SELECTOR, "#ui-vip-location__map > div > img"))
+                    )
+                            
+                    driver.execute_script("arguments[0].click();", map_element)
+                    
+                    # Wait for the Google Maps link to appear after map loads
+                    maps_link = WebDriverWait(driver, 10).until(
+                        EC.presence_of_element_located((
+                            By.CSS_SELECTOR, 
+                            'a[title="Open this area in Google Maps (opens a new window)"]'
+                        ))
+                    ).get_attribute('href')
+                    
+                    details['full_address'] = address
+                    details['google_maps_link'] = maps_link
+                    log_and_print(f"Found address: {address}")
+                    log_and_print(f"Found maps link: {maps_link}")
+                except Exception as e:
+                    log_and_print(f"Error getting address: {str(e)}", level='error')
+                    details['full_address'] = None
+                    details['google_maps_link'] = None
+
+                log_and_print("Calculating total price", price, details['common_costs'])
+                if price is not None:
+                    details['total_price'] = price + (details['common_costs'] if details['common_costs'] is not None else 0)
+                else:
+                    details['total_price'] = None
+
+                # Before returning
+                missing_fields = [k for k, v in details.items() if v is None]
+                if missing_fields:
+                    log_and_print(f"Warning: Missing fields in final details: {', '.join(missing_fields)}", 
+                                  level='warning', 
+                                  color=ORANGE)
+
+                return details
             
-            # Wait for the Google Maps link to appear after map loads
-            maps_link = WebDriverWait(driver, 10).until(
-                EC.presence_of_element_located((
-                    By.CSS_SELECTOR, 
-                    'a[title="Open this area in Google Maps (opens a new window)"]'
-                ))
-            ).get_attribute('href')
-            
-            details['full_address'] = address
-            details['google_maps_link'] = maps_link
-            log_and_print(f"Found address: {address}")
-            log_and_print(f"Found maps link: {maps_link}")
+            except Exception as e:
+                log_and_print(f"{ORANGE}Warning: Error processing listing: {str(e)}{RESET}", level='warning')
+                return None
         except Exception as e:
-            log_and_print(f"Error getting address: {str(e)}", level='error')
-            details['full_address'] = None
-            details['google_maps_link'] = None
-
-        log_and_print("Calculating total price", price, details['common_costs'])
-        if price is not None:
-            details['total_price'] = price + (details['common_costs'] if details['common_costs'] is not None else 0)
-        else:
-            details['total_price'] = None
-
-        # Before returning
-        missing_fields = [k for k, v in details.items() if v is None]
-        if missing_fields:
-            log_and_print(f"Warning: Missing fields in final details: {', '.join(missing_fields)}", 
-                          level='warning', 
-                          color=ORANGE)
-
-        return details
-    
-    except Exception as e:
-        log_and_print(f"{ORANGE}Warning: Error processing listing: {str(e)}{RESET}", level='warning')
-        return None
+            retry_count += 1
+            log_and_print(f"Attempt {retry_count}/{max_retries} failed: {str(e)}", level='warning')
+            try:
+                driver.quit()
+            except:
+                pass
+            if retry_count == max_retries:
+                raise
+            time.sleep(random.uniform(5, 10))
 
 def scrape_links_from_location():
     chrome_options = Options()

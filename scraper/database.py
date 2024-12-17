@@ -2,6 +2,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, scoped_session
 import os
 from datetime import datetime
+from tenacity import retry, stop_after_attempt, wait_exponential
 
 from web.models import Run, Property, PropertyImage, MetroStation
 
@@ -13,9 +14,17 @@ Session = scoped_session(SessionFactory)
 # Export Session for use in other modules
 __all__ = ['Session', 'get_db_session', 'save_property', 'save_single_property', 'is_duplicate_listing']
 
+@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
 def get_db_session():
-    """Get a scoped database session"""
-    return Session()
+    """Get a scoped database session with retry logic"""
+    try:
+        session = Session()
+        # Test the connection
+        session.execute("SELECT 1")
+        return session
+    except Exception as e:
+        log_and_print(f"Database connection failed: {str(e)}", level='error')
+        raise
 
 def clean_area(area_str):
     """Clean and convert area string to float"""
