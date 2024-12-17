@@ -13,12 +13,12 @@ engine = create_engine(
     os.getenv('DATABASE_URL'),
     pool_size=5,
     max_overflow=10,
-    pool_timeout=30,
-    pool_recycle=1800,  # Recycle connections after 30 minutes
+    pool_timeout=None,  # No timeout
+    pool_recycle=3600,  # Recycle connections after 1 hour
     pool_pre_ping=True,  # Enable connection health checks
     connect_args={
-        'connect_timeout': 10,
-        'options': '-c statement_timeout=60000 -c idle_in_transaction_session_timeout=60000'
+        'connect_timeout': None,  # No timeout
+        'options': '-c statement_timeout=0'  # Disable statement timeout at connection level
     }
 )
 

@@ -508,10 +508,8 @@ def scrape_links_from_location():
 
         return all_properties
 
-        
-
     finally:
-        Session.remove()  # Use Session.remove() instead of session.remove()
+        session.close()  # Close the specific session
         driver.quit()
 
 def clean_url(url):
