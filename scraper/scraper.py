@@ -32,7 +32,7 @@ from scraper.database import (
 from web.models import db, Run  # Add this import
 from web.app import app  # Import the Flask app
 from datetime import timedelta
-from scraper.utils import setup_logger
+from scraper.utils import setup_logger, log_and_print  # Changed this line
 from web.utils import convert_to_embed_src  # Update import
 
 # At the top of the file, add these color constants
@@ -43,19 +43,6 @@ LISTINGS_PER_PAGE = 48
 
 # At the start of the file
 logger = setup_logger()
-
-def log_and_print(message, level='info', color=None):
-    """Helper function to both log and print messages"""
-        
-    # Log to file
-    if level == 'info':
-        logger.info(message)
-    elif level == 'warning':
-        logger.warning(message)
-    elif level == 'error':
-        logger.error(message)
-    elif level == 'debug':
-        logger.debug(message)
 
 def get_uf_value():
     try:

@@ -3,7 +3,7 @@ from sqlalchemy.orm import sessionmaker, scoped_session
 import os
 from datetime import datetime
 from tenacity import retry, stop_after_attempt, wait_exponential
-from scraper.utils import setup_logger
+from scraper.utils import log_and_print
 
 from web.models import Run, Property, PropertyImage, MetroStation
 
@@ -11,20 +11,6 @@ from web.models import Run, Property, PropertyImage, MetroStation
 engine = create_engine(os.getenv('DATABASE_URL'))
 SessionFactory = sessionmaker(bind=engine)
 Session = scoped_session(SessionFactory)
-
-# Setup logger
-logger = setup_logger()
-
-def log_and_print(message, level='info', color=None):
-    """Helper function to both log and print messages"""
-    if level == 'info':
-        logger.info(message)
-    elif level == 'warning':
-        logger.warning(message)
-    elif level == 'error':
-        logger.error(message)
-    elif level == 'debug':
-        logger.debug(message)
 
 # Export Session for use in other modules
 __all__ = ['Session', 'get_db_session', 'save_property', 'save_single_property', 'is_duplicate_listing']
