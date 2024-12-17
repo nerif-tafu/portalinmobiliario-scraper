@@ -83,12 +83,15 @@ def clean_area(area_str):
 
 def is_duplicate_listing(session, url):
     """Check if a listing URL has been scraped before"""
-    return session.query(Property).filter(Property.original_url == url).first() is not None
+    is_duplicate = session.query(Property).filter(Property.original_url == url).first() is not None
+    if is_duplicate:
+        log_and_print(f"Skipping duplicate listing: {url}", level='info')
+    return is_duplicate
 
 def save_property(prop_data, run_id):
     """Save a single property to database"""
     if not prop_data:
-        print("No property data to save")
+        log_and_print("No property data to save", level='warning')
         return None
 
     session = Session()
@@ -148,6 +151,7 @@ def save_single_property(prop_data, run_id):
     try:
         # Check if listing already exists
         if is_duplicate_listing(session, prop_data.get('link', '')):
+            log_and_print(f"Skipping duplicate property: {prop_data.get('title', 'Unknown')}", level='info')
             return None
 
         # Create property
