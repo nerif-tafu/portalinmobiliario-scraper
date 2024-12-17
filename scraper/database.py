@@ -8,14 +8,18 @@ from scraper.utils import log_and_print
 
 from web.models import Run, Property, PropertyImage, MetroStation
 
-# Create database engine with connection pool settings
+# Create database engine with updated connection pool settings
 engine = create_engine(
     os.getenv('DATABASE_URL'),
     pool_size=5,
     max_overflow=10,
     pool_timeout=30,
     pool_recycle=1800,  # Recycle connections after 30 minutes
-    pool_pre_ping=True  # Enable connection health checks
+    pool_pre_ping=True,  # Enable connection health checks
+    connect_args={
+        'connect_timeout': 10,
+        'options': '-c statement_timeout=60000 -c idle_in_transaction_session_timeout=60000'
+    }
 )
 
 SessionFactory = sessionmaker(bind=engine)
@@ -50,15 +54,17 @@ def safe_commit(session):
     except OperationalError as e:
         log_and_print(f"Database operation error, retrying: {str(e)}", level='error')
         session.rollback()
-        # Get a fresh session and retry
         session.close()
         Session.remove()
-        session = get_db_session()
-        session.commit()
+        # Get a fresh session and retry
+        new_session = get_db_session()
+        new_session.commit()
+        return new_session
     except SQLAlchemyError as e:
         log_and_print(f"Database error: {str(e)}", level='error')
         session.rollback()
         raise
+    return session
 
 def clean_area(area_str):
     """Clean and convert area string to float"""

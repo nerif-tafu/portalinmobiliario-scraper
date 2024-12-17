@@ -631,12 +631,12 @@ if __name__ == "__main__":
                     else:
                         log_and_print(f"Scraped {len(property_links)} properties")
 
-                    for data in property_links:
+                    for index, data in enumerate(property_links):
                         if is_duplicate_listing(session, data["link"]):
                             log_and_print(f"Skipping duplicate listing: {data['title']}")
                             continue
 
-                        log_and_print(f"Extracting details for {data['title']}")
+                        log_and_print(f"Extracting details for {data['title']} ({index}/{len(property_links)})")
                         listing_details = extract_listing_details(data["link"], data["price"])
                     
                         if listing_details:
