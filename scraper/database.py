@@ -1,5 +1,6 @@
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker, scoped_session
+from sqlalchemy.exc import OperationalError, SQLAlchemyError
 import os
 from datetime import datetime
 from tenacity import retry, stop_after_attempt, wait_exponential
@@ -7,15 +8,27 @@ from scraper.utils import log_and_print
 
 from web.models import Run, Property, PropertyImage, MetroStation
 
-# Create database engine
-engine = create_engine(os.getenv('DATABASE_URL'))
+# Create database engine with connection pool settings
+engine = create_engine(
+    os.getenv('DATABASE_URL'),
+    pool_size=5,
+    max_overflow=10,
+    pool_timeout=30,
+    pool_recycle=1800,  # Recycle connections after 30 minutes
+    pool_pre_ping=True  # Enable connection health checks
+)
+
 SessionFactory = sessionmaker(bind=engine)
 Session = scoped_session(SessionFactory)
 
 # Export Session for use in other modules
 __all__ = ['Session', 'get_db_session', 'save_property', 'save_single_property', 'is_duplicate_listing']
 
-@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
+@retry(
+    stop=stop_after_attempt(5),
+    wait=wait_exponential(multiplier=1, min=4, max=10),
+    reraise=True
+)
 def get_db_session():
     """Get a scoped database session with retry logic"""
     try:
@@ -25,6 +38,26 @@ def get_db_session():
         return session
     except Exception as e:
         log_and_print(f"Database connection failed: {str(e)}", level='error')
+        if session:
+            session.close()
+        Session.remove()
+        raise
+
+def safe_commit(session):
+    """Safely commit changes with retry logic"""
+    try:
+        session.commit()
+    except OperationalError as e:
+        log_and_print(f"Database operation error, retrying: {str(e)}", level='error')
+        session.rollback()
+        # Get a fresh session and retry
+        session.close()
+        Session.remove()
+        session = get_db_session()
+        session.commit()
+    except SQLAlchemyError as e:
+        log_and_print(f"Database error: {str(e)}", level='error')
+        session.rollback()
         raise
 
 def clean_area(area_str):
@@ -98,7 +131,7 @@ def save_property(prop_data, run_id):
             )
             session.add(station)
 
-        session.commit()
+        safe_commit(session)
         print(f"Successfully saved property: {prop_data.get('title')}")
         return property
 
@@ -155,7 +188,7 @@ def save_single_property(prop_data, run_id):
             )
             session.add(station)
 
-        session.commit()
+        safe_commit(session)
         return property
 
     except Exception as e:
