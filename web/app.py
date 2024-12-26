@@ -215,7 +215,59 @@ def get_properties():
 
 @app.route('/')
 def index():
-    return render_template('index.html')
+    run_id = request.args.get('run_id')
+    page = request.args.get('page', 1, type=int)
+    per_page = 100
+    
+    # Get filter parameters
+    hide_liked = request.args.get('hide_liked') == 'true'
+    hide_disliked = request.args.get('hide_disliked') == 'true'
+    hide_unseen = request.args.get('hide_unseen') == 'true'
+    
+    # Get all properties across all runs, ordered by newest first
+    query = (
+        db.session.query(Property)
+        .join(Run)
+        .order_by(Run.started_at.desc())
+    )
+    
+    # Get total count for pagination
+    total_count = query.count()
+    total_pages = (total_count + per_page - 1) // per_page
+    
+    # Apply pagination
+    properties = query.offset((page - 1) * per_page).limit(per_page).all()
+    
+    # Get preferences for these properties
+    property_urls = [p.original_url for p in properties]
+    preferences = {
+        pref.property_url: pref 
+        for pref in PropertyPreference.query.filter(
+            PropertyPreference.property_url.in_(property_urls)
+        ).all()
+    }
+    
+    # Attach preferences to properties
+    for prop in properties:
+        prop.preference = preferences.get(prop.original_url)
+    
+    # Group properties by location
+    properties_by_location = {}
+    for prop in properties:
+        if prop.location not in properties_by_location:
+            properties_by_location[prop.location] = []
+        properties_by_location[prop.location].append(prop)
+
+    return render_template(
+        'index.html',
+        properties_by_location=properties_by_location,
+        total_properties=total_count,
+        current_page=page,
+        total_pages=total_pages,
+        hide_liked=hide_liked,
+        hide_disliked=hide_disliked,
+        hide_unseen=hide_unseen
+    )
 
 @app.route('/property/preference', methods=['POST'])
 def set_preference():

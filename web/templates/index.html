@@ -249,11 +249,6 @@
         }
     </style>
     <script>
-        const ITEMS_PER_PAGE = 100;
-        let currentPage = 1;
-        let totalProperties = 0;
-        let totalPages = 0;
-        
         function updateStatus() {
             fetch('/status')
                 .then(response => response.json())
@@ -263,193 +258,6 @@
                     statusDiv.innerHTML = html;
                     statusDiv.className = `status ${data.status.toLowerCase()}`;
                 });
-        }
-
-        function renderProperty(property) {
-            const propertyDiv = document.createElement('div');
-            propertyDiv.className = `property ${property.preference || ''}`;
-            propertyDiv.setAttribute('data-url', property.url);
-            propertyDiv.setAttribute('data-location', property.location);
-
-            propertyDiv.innerHTML = `
-                <div class="property-header">
-                    <h2 class="title">
-                        <a href="${property.url}" target="_blank">${property.title}</a>
-                    </h2>
-                    <div class="price">$${formatNumber(property.total_price)}</div>
-                </div>
-                <div class="main-content">
-                    <div class="images-container">
-                        <div class="images">
-                            ${property.images.map(img => `
-                                <img src="${img.url}" alt="Property Image">
-                            `).join('')}
-                        </div>
-                    </div>
-                    ${property.google_maps_link ? `
-                        <div class="map-container">
-                            <div class="map">
-                                <iframe
-                                    src="${convertToEmbedSrc(property.google_maps_link)}"
-                                    width="100%"
-                                    height="300"
-                                    style="border:0;"
-                                    allowfullscreen=""
-                                    loading="lazy"
-                                    referrerpolicy="no-referrer-when-downgrade">
-                                </iframe>
-                            </div>
-                        </div>
-                    ` : ''}
-                </div>
-                <div class="attributes">
-                    <div class="attribute"><strong>Rent:</strong> $${formatNumber(property.price)}</div>
-                    <div class="attribute"><strong>Common Costs:</strong> $${formatNumber(property.common_costs || 0)}</div>
-                    <div class="attribute"><strong>Total Area:</strong> ${property.total_area}m²</div>
-                    <div class="attribute"><strong>Floor:</strong> ${property.floor} of ${property.total_floors}</div>
-                    <div class="attribute"><strong>Furnished:</strong> <span class="status-${property.furnished ? 'yes' : 'no'}">${property.furnished ? 'Yes' : 'No'}</span></div>
-                    <div class="attribute"><strong>Gym:</strong> <span class="status-${property.has_gym ? 'yes' : 'no'}">${property.has_gym ? 'Yes' : 'No'}</span></div>
-                    <div class="attribute"><strong>Added:</strong> ${property.created_at}</div>
-                    <div class="attribute metro-stations">
-                        <strong>Metro Stations:</strong>
-                        ${property.metro_stations.length ? `
-                            <ul class="metro-list">
-                                ${property.metro_stations.map(station => `
-                                    <li class="metro-item">${station.name} (${station.walking_minutes} min)</li>
-                                `).join('')}
-                            </ul>
-                        ` : '<p>No metro stations nearby</p>'}
-                    </div>
-                </div>
-                <div class="property-actions">
-                    <button class="action-button like-button ${property.preference === 'liked' ? 'active' : ''}"
-                            onclick="setPreference('${property.url}', 'liked')">
-                        Like
-                    </button>
-                    <button class="action-button dislike-button ${property.preference === 'disliked' ? 'active' : ''}"
-                            onclick="setPreference('${property.url}', 'disliked')">
-                        Dislike
-                    </button>
-                    <button class="action-button unseen-button ${!property.preference ? 'active' : ''}"
-                            onclick="removePreference('${property.url}')">
-                        Unseen
-                    </button>
-                </div>
-            `;
-            return propertyDiv;
-        }
-
-        function formatNumber(value) {
-            return value ? value.toLocaleString() : "0";
-        }
-
-        function convertToEmbedSrc(url) {
-            if (!url) return '';
-            // Convert from regular maps URL to embed URL with a pin
-            // Add parameters for zoom level and map type
-            return url.replace('maps/place/', 'maps/embed?pb=!1m18!1m12!1m3!1d3330!2m3!1f0!2m3!1f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x0%3A0x0!2zM!5e0!3m2!1sen!2s!4v1&q=') + '&z=15&maptype=roadmap';
-        }
-
-        function loadProperties(page) {
-            fetch(`/api/properties?page=${page}`)
-                .then(response => response.json())
-                .then(data => {
-                    currentPage = data.page;
-                    totalProperties = data.total;
-                    totalPages = data.total_pages;
-
-                    // Update stats
-                    document.querySelector('.stat-value').textContent = `${totalProperties} Total Properties`;
-
-                    // Clear existing properties
-                    const container = document.getElementById('properties-container');
-                    container.innerHTML = '';
-
-                    // Group properties by location
-                    const propertiesByLocation = {};
-                    data.properties.forEach(property => {
-                        if (!propertiesByLocation[property.location]) {
-                            propertiesByLocation[property.location] = [];
-                        }
-                        propertiesByLocation[property.location].push(property);
-                    });
-
-                    // Render properties by location
-                    Object.entries(propertiesByLocation).forEach(([location, properties]) => {
-                        const locationGroup = document.createElement('div');
-                        locationGroup.className = 'location-group mb-8';
-                        
-                        properties.forEach(property => {
-                            const propertyElement = renderProperty(property);
-                            locationGroup.appendChild(propertyElement);
-                        });
-                        
-                        container.appendChild(locationGroup);
-                    });
-
-                    updatePagination();
-                    applyCurrentFilters();
-                });
-        }
-
-        function updatePagination() {
-            const pagination = document.querySelector('.pagination');
-            let html = '';
-            
-            if (totalPages <= 1) {
-                pagination.innerHTML = '';
-                return;
-            }
-            
-            // Previous button
-            if (currentPage > 1) {
-                html += `<a href="#" onclick="loadProperties(${currentPage - 1})">&laquo; Previous</a>`;
-            } else {
-                html += `<a class="disabled">&laquo; Previous</a>`;
-            }
-            
-            // Page numbers
-            for (let i = 1; i <= totalPages; i++) {
-                if (i === currentPage) {
-                    html += `<a class="current">${i}</a>`;
-                } else {
-                    html += `<a href="#" onclick="loadProperties(${i})">${i}</a>`;
-                }
-            }
-            
-            // Next button
-            if (currentPage < totalPages) {
-                html += `<a href="#" onclick="loadProperties(${currentPage + 1})">Next &raquo;</a>`;
-            } else {
-                html += `<a class="disabled">Next &raquo;</a>`;
-            }
-            
-            pagination.innerHTML = html;
-        }
-
-        function toggleFilter(type) {
-            const button = document.getElementById(`hide-${type}`);
-            button.classList.toggle('active');
-            applyCurrentFilters();
-        }
-
-        function applyCurrentFilters() {
-            const hideUnseen = document.getElementById('hide-unseen').classList.contains('active');
-            const hideLiked = document.getElementById('hide-liked').classList.contains('active');
-            const hideDisliked = document.getElementById('hide-disliked').classList.contains('active');
-
-            document.querySelectorAll('.property').forEach(property => {
-                const isLiked = property.classList.contains('liked');
-                const isDisliked = property.classList.contains('disliked');
-                const isUnseen = !isLiked && !isDisliked;
-
-                let shouldHide = false;
-                if (hideUnseen && isUnseen) shouldHide = true;
-                if (hideLiked && isLiked) shouldHide = true;
-                if (hideDisliked && isDisliked) shouldHide = true;
-
-                property.classList.toggle('hidden', shouldHide);
-            });
         }
 
         function setPreference(propertyUrl, status) {
@@ -474,9 +282,6 @@
                     const buttons = propertyDiv.querySelectorAll('.action-button');
                     buttons.forEach(btn => btn.classList.remove('active'));
                     propertyDiv.querySelector(`.${status}-button`).classList.add('active');
-                    
-                    // Re-apply filters
-                    applyCurrentFilters();
                 }
             });
         }
@@ -501,21 +306,38 @@
                     const buttons = propertyDiv.querySelectorAll('.action-button');
                     buttons.forEach(btn => btn.classList.remove('active'));
                     propertyDiv.querySelector('.unseen-button').classList.add('active');
-                    
-                    // Re-apply filters
-                    applyCurrentFilters();
                 }
             });
         }
 
-        // Initialize when page loads
-        document.addEventListener('DOMContentLoaded', () => {
-            loadProperties(1);
-            updateStatus();
-        });
+        function toggleFilter(type) {
+            const button = document.getElementById(`hide-${type}`);
+            button.classList.toggle('active');
+            
+            // Update URL with current filters
+            const urlParams = new URLSearchParams(window.location.search);
+            
+            // Update filter parameters
+            ['liked', 'disliked', 'unseen'].forEach(filterType => {
+                const isActive = document.getElementById(`hide-${filterType}`).classList.contains('active');
+                if (isActive) {
+                    urlParams.set(`hide_${filterType}`, 'true');
+                } else {
+                    urlParams.delete(`hide_${filterType}`);
+                }
+            });
+            
+            // Keep the current page
+            const currentPage = urlParams.get('page') || '1';
+            urlParams.set('page', currentPage);
+            
+            // Reload page with new filters
+            window.location.href = `?${urlParams.toString()}`;
+        }
 
         // Update status every 30 seconds
         setInterval(updateStatus, 30000);
+        updateStatus();
     </script>
 </head>
 <body>
@@ -523,13 +345,13 @@
     
     <div class="nav">
         <div class="filter-buttons">
-            <button class="filter-button" onclick="toggleFilter('liked')" id="hide-liked">
+            <button class="filter-button {% if hide_liked %}active{% endif %}" onclick="toggleFilter('liked')" id="hide-liked">
                 Hide Liked
             </button>
-            <button class="filter-button" onclick="toggleFilter('disliked')" id="hide-disliked">
+            <button class="filter-button {% if hide_disliked %}active{% endif %}" onclick="toggleFilter('disliked')" id="hide-disliked">
                 Hide Disliked
             </button>
-            <button class="filter-button" onclick="toggleFilter('unseen')" id="hide-unseen">
+            <button class="filter-button {% if hide_unseen %}active{% endif %}" onclick="toggleFilter('unseen')" id="hide-unseen">
                 Hide Unseen
             </button>
         </div>
@@ -538,7 +360,7 @@
 
     <div class="stats">
         <div class="stat-card">
-            <h2 class="stat-value">Loading...</h2>
+            <h2 class="stat-value">{{ total_properties }} Total Properties</h2>
         </div>
 
         <div id="status" class="status">
@@ -546,12 +368,106 @@
         </div>
     </div>
 
-    <div id="properties-container">
-        <!-- Properties will be loaded here dynamically -->
+    {% for location, properties in properties_by_location.items() %}
+    <div class="location-group mb-8">        
+        {% for property in properties %}
+        <div class="property {% if property.preference %}{{ property.preference.status }}{% endif %} {% if 
+            (hide_liked and property.preference and property.preference.status == 'liked') or
+            (hide_disliked and property.preference and property.preference.status == 'disliked') or
+            (hide_unseen and (not property.preference))
+        %}hidden{% endif %}" data-url="{{ property.original_url }}">
+            <div class="property-header">
+                <h2 class="title">
+                    <a href="{{ property.original_url }}" target="_blank">{{ property.title }}</a>
+                </h2>
+                <div class="price">${{ property.total_price|format_number }}</div>
+            </div>
+            <div class="main-content">
+                <div class="images-container">
+                    <div class="images">
+                        {% for image in property.images %}
+                        <img src="{{ image.image_url }}" alt="Property Image">
+                        {% endfor %}
+                    </div>
+                </div>
+                {% if property.google_maps_link %}
+                <div class="map-container">
+                    <div class="map">
+                        <iframe
+                            src="{{ property.google_maps_link|convert_to_embed }}"
+                            width="100%"
+                            height="300"
+                            style="border:0;"
+                            allowfullscreen=""
+                            loading="lazy"
+                            referrerpolicy="no-referrer-when-downgrade">
+                        </iframe>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+            <div class="attributes">
+                <div class="attribute"><strong>Rent:</strong> ${{ property.price|format_number }}</div>
+                <div class="attribute"><strong>Common Costs:</strong> ${{ property.common_costs|format_number if property.common_costs else 0 }}</div>
+                <div class="attribute"><strong>Total Area:</strong> {{ property.total_area }}m²</div>
+                <div class="attribute"><strong>Floor:</strong> {{ property.floor }} of {{ property.total_floors }}</div>
+                <div class="attribute"><strong>Furnished:</strong> <span class="status-{{ 'yes' if property.furnished else 'no' }}">{{ 'Yes' if property.furnished else 'No' }}</span></div>
+                <div class="attribute"><strong>Gym:</strong> <span class="status-{{ 'yes' if property.has_gym else 'no' }}">{{ 'Yes' if property.has_gym else 'No' }}</span></div>
+                <div class="attribute"><strong>Added:</strong> {{ property.run.started_at.strftime('%Y-%m-%d %H:%M') }}</div>
+                <div class="attribute metro-stations">
+                    <strong>Metro Stations:</strong>
+                    {% if property.metro_stations %}
+                    <ul class="metro-list">
+                        {% for station in property.metro_stations %}
+                        <li class="metro-item">{{ station.name }} ({{ station.walking_minutes }} min)</li>
+                        {% endfor %}
+                    </ul>
+                    {% else %}
+                    <p>No metro stations nearby</p>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="property-actions">
+                <button class="action-button like-button {% if property.preference and property.preference.status == 'liked' %}active{% endif %}"
+                        onclick="setPreference('{{ property.original_url }}', 'liked')">
+                    Like
+                </button>
+                <button class="action-button dislike-button {% if property.preference and property.preference.status == 'disliked' %}active{% endif %}"
+                        onclick="setPreference('{{ property.original_url }}', 'disliked')">
+                    Dislike
+                </button>
+                <button class="action-button unseen-button {% if not property.preference %}active{% endif %}"
+                        onclick="removePreference('{{ property.original_url }}')">
+                    Unseen
+                </button>
+            </div>
+        </div>
+        {% endfor %}
     </div>
+    {% endfor %}
 
+    {% if total_pages > 1 %}
     <div class="pagination">
-        <!-- Pagination will be populated by JavaScript -->
+        {% if current_page > 1 %}
+            <a href="?page={{ current_page - 1 }}{% for type in ['liked', 'disliked', 'unseen'] %}{% if vars()['hide_' + type] %}&hide_{{ type }}=true{% endif %}{% endfor %}">&laquo; Previous</a>
+        {% else %}
+            <a class="disabled">&laquo; Previous</a>
+        {% endif %}
+        
+        {% for page_num in range(1, total_pages + 1) %}
+            {% if page_num == current_page %}
+                <a class="current">{{ page_num }}</a>
+            {% else %}
+                <a href="?page={{ page_num }}{% for type in ['liked', 'disliked', 'unseen'] %}{% if vars()['hide_' + type] %}&hide_{{ type }}=true{% endif %}{% endfor %}">{{ page_num }}</a>
+            {% endif %}
+        {% endfor %}
+        
+        {% if current_page < total_pages %}
+            <a href="?page={{ current_page + 1 }}{% for type in ['liked', 'disliked', 'unseen'] %}{% if vars()['hide_' + type] %}&hide_{{ type }}=true{% endif %}{% endfor %}">Next &raquo;</a>
+        {% else %}
+            <a class="disabled">Next &raquo;</a>
+        {% endif %}
     </div>
+    {% endif %}
 </body>
 </html> 
