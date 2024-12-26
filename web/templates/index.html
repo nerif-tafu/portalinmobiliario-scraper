@@ -263,22 +263,30 @@
                 });
         }
 
+        function getVisibleProperties() {
+            return Array.from(document.querySelectorAll('.property')).filter(
+                prop => !prop.classList.contains('hidden')
+            );
+        }
+
         function showPage(page) {
-            const properties = document.querySelectorAll('.property');
-            const totalPages = Math.ceil(properties.length / ITEMS_PER_PAGE);
+            const visibleProperties = getVisibleProperties();
+            const totalPages = Math.ceil(visibleProperties.length / ITEMS_PER_PAGE);
             
-            // Update current page
-            currentPage = page;
+            // Update current page (ensure it's within bounds)
+            currentPage = Math.min(Math.max(1, page), totalPages || 1);
             
-            // Hide all properties
-            properties.forEach(property => property.style.display = 'none');
+            // Hide all properties first
+            document.querySelectorAll('.property').forEach(property => {
+                property.style.display = 'none';
+            });
             
-            // Show properties for current page
-            const start = (page - 1) * ITEMS_PER_PAGE;
+            // Show visible properties for current page
+            const start = (currentPage - 1) * ITEMS_PER_PAGE;
             const end = start + ITEMS_PER_PAGE;
-            for (let i = start; i < end && i < properties.length; i++) {
-                properties[i].style.display = 'block';
-            }
+            visibleProperties.slice(start, end).forEach(property => {
+                property.style.display = 'block';
+            });
             
             // Update pagination UI
             updatePagination(totalPages);
@@ -290,6 +298,11 @@
         function updatePagination(totalPages) {
             const pagination = document.querySelector('.pagination');
             let html = '';
+            
+            if (totalPages <= 1) {
+                pagination.innerHTML = '';
+                return;
+            }
             
             // Previous button
             if (currentPage > 1) {
@@ -387,6 +400,9 @@
                     property.classList.toggle('hidden', button.classList.contains('active'));
                 }
             });
+            
+            // Reset to first page and update pagination
+            showPage(1);
         }
 
         // Initialize pagination when page loads
