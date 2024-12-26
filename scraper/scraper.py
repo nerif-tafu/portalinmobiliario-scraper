@@ -435,26 +435,30 @@ def scrape_links_from_location():
                     WebDriverWait(driver, 10).until(
                         EC.presence_of_element_located((By.CSS_SELECTOR, "ol.ui-search-layout"))
                     )
+
+                    log_and_print("Found listings container")
                     
                     # Get all listing elements
                     listings = WebDriverWait(driver, 10).until(
                         EC.presence_of_all_elements_located((By.CSS_SELECTOR, "li.ui-search-layout__item"))
                     )
 
+                    log_and_print(f"Found {len(listings)} listings")
+
                     if not listings:
                         log_and_print("No listings found on this page. Stopping.", level='warning')
                         still_scraping_properties = False
                         continue
-                    else:
-                        log_and_print(f"Found {len(listings)} listings on page {page + 1}")
 
                     if LISTINGS_PER_PAGE:
                         listings = listings[:LISTINGS_PER_PAGE]
 
+                    log_and_print(f"Processing {len(listings)} listings")
+
                     for listing in listings:
                         try:
                             title = WebDriverWait(listing, 10).until(
-                                EC.presence_of_element_located((By.CSS_SELECTOR, ".ui-search-item__title-label-grid"))
+                                EC.presence_of_element_located((By.CSS_SELECTOR, ".poly-component__headline"))
                             ).text
                             
                             price_element = WebDriverWait(listing, 10).until(
@@ -462,8 +466,9 @@ def scrape_links_from_location():
                             )
                             
                             link = WebDriverWait(listing, 10).until(
-                                EC.presence_of_element_located((By.CSS_SELECTOR, "a.ui-search-link"))
+                                EC.presence_of_element_located((By.CSS_SELECTOR, "div.poly-card__content > h2 > a"))
                             ).get_attribute("href")
+                
                             link = clean_url(link)
                             
                             price = convert_price_to_clp(price_element)

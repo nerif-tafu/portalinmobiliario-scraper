@@ -162,11 +162,19 @@ def index():
         .all()
     )
     
+    # Get all preferences
+    preferences = {
+        pref.property_url: pref 
+        for pref in PropertyPreference.query.all()
+    }
+    
     # Group properties by location
     properties_by_location = {}
     for prop in properties:
         if prop.location not in properties_by_location:
             properties_by_location[prop.location] = []
+        # Attach preference to property if exists
+        prop.preference = preferences.get(prop.original_url)
         properties_by_location[prop.location].append(prop)
 
     return render_template(

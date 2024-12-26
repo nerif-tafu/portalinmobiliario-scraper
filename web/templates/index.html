@@ -220,8 +220,38 @@
             align-items: center;
             height: 100%;
         }
+        /* Pagination styles */
+        .pagination {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+            margin: 20px 0;
+        }
+        .pagination a {
+            padding: 8px 16px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            text-decoration: none;
+            color: #2c5282;
+        }
+        .pagination a:hover {
+            background-color: #f5f5f5;
+        }
+        .pagination .current {
+            background-color: #2c5282;
+            color: white;
+            border-color: #2c5282;
+        }
+        .pagination .disabled {
+            color: #ccc;
+            pointer-events: none;
+        }
     </style>
     <script>
+        const ITEMS_PER_PAGE = 100;
+        let currentPage = 1;
+        
         function updateStatus() {
             fetch('/status')
                 .then(response => response.json())
@@ -231,6 +261,60 @@
                     statusDiv.innerHTML = html;
                     statusDiv.className = `status ${data.status.toLowerCase()}`;
                 });
+        }
+
+        function showPage(page) {
+            const properties = document.querySelectorAll('.property');
+            const totalPages = Math.ceil(properties.length / ITEMS_PER_PAGE);
+            
+            // Update current page
+            currentPage = page;
+            
+            // Hide all properties
+            properties.forEach(property => property.style.display = 'none');
+            
+            // Show properties for current page
+            const start = (page - 1) * ITEMS_PER_PAGE;
+            const end = start + ITEMS_PER_PAGE;
+            for (let i = start; i < end && i < properties.length; i++) {
+                properties[i].style.display = 'block';
+            }
+            
+            // Update pagination UI
+            updatePagination(totalPages);
+            
+            // Scroll to top
+            window.scrollTo(0, 0);
+        }
+        
+        function updatePagination(totalPages) {
+            const pagination = document.querySelector('.pagination');
+            let html = '';
+            
+            // Previous button
+            if (currentPage > 1) {
+                html += `<a href="#" onclick="showPage(${currentPage - 1})">&laquo; Previous</a>`;
+            } else {
+                html += `<a class="disabled">&laquo; Previous</a>`;
+            }
+            
+            // Page numbers
+            for (let i = 1; i <= totalPages; i++) {
+                if (i === currentPage) {
+                    html += `<a class="current">${i}</a>`;
+                } else {
+                    html += `<a href="#" onclick="showPage(${i})">${i}</a>`;
+                }
+            }
+            
+            // Next button
+            if (currentPage < totalPages) {
+                html += `<a href="#" onclick="showPage(${currentPage + 1})">Next &raquo;</a>`;
+            } else {
+                html += `<a class="disabled">Next &raquo;</a>`;
+            }
+            
+            pagination.innerHTML = html;
         }
 
         function goToRun() {
@@ -305,9 +389,14 @@
             });
         }
 
+        // Initialize pagination when page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            showPage(1);
+            updateStatus();
+        });
+
         // Update status every 30 seconds
         setInterval(updateStatus, 30000);
-        updateStatus();
     </script>
 </head>
 <body>
@@ -341,7 +430,7 @@
     {% for location, properties in properties_by_location.items() %}
     <div class="location-group mb-8">        
         {% for property in properties %}
-        <div class="property {% if property.preference %}{{ property.preference.status }}{% endif %}" data-url="{{ property.original_url }}">
+        <div class="property {% if property.preference %}{{ property.preference.status }}{% endif %}" data-url="{{ property.original_url }}" style="display: none;">
             <div class="property-header">
                 <h2 class="title">
                     <a href="{{ property.original_url }}" target="_blank">{{ property.title }}</a>
@@ -412,5 +501,9 @@
         {% endfor %}
     </div>
     {% endfor %}
+
+    <div class="pagination">
+        <!-- Pagination will be populated by JavaScript -->
+    </div>
 </body>
 </html> 
