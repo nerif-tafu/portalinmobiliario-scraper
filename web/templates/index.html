@@ -251,6 +251,8 @@
     <script>
         const ITEMS_PER_PAGE = 100;
         let currentPage = 1;
+        let totalProperties = 0;
+        let totalPages = 0;
         
         function updateStatus() {
             fetch('/status')
@@ -263,39 +265,134 @@
                 });
         }
 
-        function getVisibleProperties() {
-            return Array.from(document.querySelectorAll('.property')).filter(
-                prop => !prop.classList.contains('hidden')
-            );
+        function renderProperty(property) {
+            const propertyDiv = document.createElement('div');
+            propertyDiv.className = `property ${property.preference || ''}`;
+            propertyDiv.setAttribute('data-url', property.url);
+            propertyDiv.setAttribute('data-location', property.location);
+
+            propertyDiv.innerHTML = `
+                <div class="property-header">
+                    <h2 class="title">
+                        <a href="${property.url}" target="_blank">${property.title}</a>
+                    </h2>
+                    <div class="price">$${formatNumber(property.total_price)}</div>
+                </div>
+                <div class="main-content">
+                    <div class="images-container">
+                        <div class="images">
+                            ${property.images.map(img => `
+                                <img src="${img.url}" alt="Property Image">
+                            `).join('')}
+                        </div>
+                    </div>
+                    ${property.google_maps_link ? `
+                        <div class="map-container">
+                            <div class="map">
+                                <iframe
+                                    src="${convertToEmbedSrc(property.google_maps_link)}"
+                                    width="100%"
+                                    height="300"
+                                    style="border:0;"
+                                    allowfullscreen=""
+                                    loading="lazy"
+                                    referrerpolicy="no-referrer-when-downgrade">
+                                </iframe>
+                            </div>
+                        </div>
+                    ` : ''}
+                </div>
+                <div class="attributes">
+                    <div class="attribute"><strong>Rent:</strong> $${formatNumber(property.price)}</div>
+                    <div class="attribute"><strong>Common Costs:</strong> $${formatNumber(property.common_costs || 0)}</div>
+                    <div class="attribute"><strong>Total Area:</strong> ${property.total_area}m²</div>
+                    <div class="attribute"><strong>Floor:</strong> ${property.floor} of ${property.total_floors}</div>
+                    <div class="attribute"><strong>Furnished:</strong> <span class="status-${property.furnished ? 'yes' : 'no'}">${property.furnished ? 'Yes' : 'No'}</span></div>
+                    <div class="attribute"><strong>Gym:</strong> <span class="status-${property.has_gym ? 'yes' : 'no'}">${property.has_gym ? 'Yes' : 'No'}</span></div>
+                    <div class="attribute"><strong>Added:</strong> ${property.created_at}</div>
+                    <div class="attribute metro-stations">
+                        <strong>Metro Stations:</strong>
+                        ${property.metro_stations.length ? `
+                            <ul class="metro-list">
+                                ${property.metro_stations.map(station => `
+                                    <li class="metro-item">${station.name} (${station.walking_minutes} min)</li>
+                                `).join('')}
+                            </ul>
+                        ` : '<p>No metro stations nearby</p>'}
+                    </div>
+                </div>
+                <div class="property-actions">
+                    <button class="action-button like-button ${property.preference === 'liked' ? 'active' : ''}"
+                            onclick="setPreference('${property.url}', 'liked')">
+                        Like
+                    </button>
+                    <button class="action-button dislike-button ${property.preference === 'disliked' ? 'active' : ''}"
+                            onclick="setPreference('${property.url}', 'disliked')">
+                        Dislike
+                    </button>
+                    <button class="action-button unseen-button ${!property.preference ? 'active' : ''}"
+                            onclick="removePreference('${property.url}')">
+                        Unseen
+                    </button>
+                </div>
+            `;
+            return propertyDiv;
         }
 
-        function showPage(page) {
-            const visibleProperties = getVisibleProperties();
-            const totalPages = Math.ceil(visibleProperties.length / ITEMS_PER_PAGE);
-            
-            // Update current page (ensure it's within bounds)
-            currentPage = Math.min(Math.max(1, page), totalPages || 1);
-            
-            // Hide all properties first
-            document.querySelectorAll('.property').forEach(property => {
-                property.style.display = 'none';
-            });
-            
-            // Show visible properties for current page
-            const start = (currentPage - 1) * ITEMS_PER_PAGE;
-            const end = start + ITEMS_PER_PAGE;
-            visibleProperties.slice(start, end).forEach(property => {
-                property.style.display = 'block';
-            });
-            
-            // Update pagination UI
-            updatePagination(totalPages);
-            
-            // Scroll to top
-            window.scrollTo(0, 0);
+        function formatNumber(value) {
+            return value ? value.toLocaleString() : "0";
         }
-        
-        function updatePagination(totalPages) {
+
+        function convertToEmbedSrc(url) {
+            if (!url) return '';
+            // Convert from regular maps URL to embed URL with a pin
+            // Add parameters for zoom level and map type
+            return url.replace('maps/place/', 'maps/embed?pb=!1m18!1m12!1m3!1d3330!2m3!1f0!2m3!1f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x0%3A0x0!2zM!5e0!3m2!1sen!2s!4v1&q=') + '&z=15&maptype=roadmap';
+        }
+
+        function loadProperties(page) {
+            fetch(`/api/properties?page=${page}`)
+                .then(response => response.json())
+                .then(data => {
+                    currentPage = data.page;
+                    totalProperties = data.total;
+                    totalPages = data.total_pages;
+
+                    // Update stats
+                    document.querySelector('.stat-value').textContent = `${totalProperties} Total Properties`;
+
+                    // Clear existing properties
+                    const container = document.getElementById('properties-container');
+                    container.innerHTML = '';
+
+                    // Group properties by location
+                    const propertiesByLocation = {};
+                    data.properties.forEach(property => {
+                        if (!propertiesByLocation[property.location]) {
+                            propertiesByLocation[property.location] = [];
+                        }
+                        propertiesByLocation[property.location].push(property);
+                    });
+
+                    // Render properties by location
+                    Object.entries(propertiesByLocation).forEach(([location, properties]) => {
+                        const locationGroup = document.createElement('div');
+                        locationGroup.className = 'location-group mb-8';
+                        
+                        properties.forEach(property => {
+                            const propertyElement = renderProperty(property);
+                            locationGroup.appendChild(propertyElement);
+                        });
+                        
+                        container.appendChild(locationGroup);
+                    });
+
+                    updatePagination();
+                    applyCurrentFilters();
+                });
+        }
+
+        function updatePagination() {
             const pagination = document.querySelector('.pagination');
             let html = '';
             
@@ -306,7 +403,7 @@
             
             // Previous button
             if (currentPage > 1) {
-                html += `<a href="#" onclick="showPage(${currentPage - 1})">&laquo; Previous</a>`;
+                html += `<a href="#" onclick="loadProperties(${currentPage - 1})">&laquo; Previous</a>`;
             } else {
                 html += `<a class="disabled">&laquo; Previous</a>`;
             }
@@ -316,13 +413,13 @@
                 if (i === currentPage) {
                     html += `<a class="current">${i}</a>`;
                 } else {
-                    html += `<a href="#" onclick="showPage(${i})">${i}</a>`;
+                    html += `<a href="#" onclick="loadProperties(${i})">${i}</a>`;
                 }
             }
             
             // Next button
             if (currentPage < totalPages) {
-                html += `<a href="#" onclick="showPage(${currentPage + 1})">Next &raquo;</a>`;
+                html += `<a href="#" onclick="loadProperties(${currentPage + 1})">Next &raquo;</a>`;
             } else {
                 html += `<a class="disabled">Next &raquo;</a>`;
             }
@@ -330,12 +427,29 @@
             pagination.innerHTML = html;
         }
 
-        function goToRun() {
-            const select = document.getElementById('run-select');
-            const runId = select.value;
-            if (runId) {
-                window.location.href = `/?run_id=${runId}`;
-            }
+        function toggleFilter(type) {
+            const button = document.getElementById(`hide-${type}`);
+            button.classList.toggle('active');
+            applyCurrentFilters();
+        }
+
+        function applyCurrentFilters() {
+            const hideUnseen = document.getElementById('hide-unseen').classList.contains('active');
+            const hideLiked = document.getElementById('hide-liked').classList.contains('active');
+            const hideDisliked = document.getElementById('hide-disliked').classList.contains('active');
+
+            document.querySelectorAll('.property').forEach(property => {
+                const isLiked = property.classList.contains('liked');
+                const isDisliked = property.classList.contains('disliked');
+                const isUnseen = !isLiked && !isDisliked;
+
+                let shouldHide = false;
+                if (hideUnseen && isUnseen) shouldHide = true;
+                if (hideLiked && isLiked) shouldHide = true;
+                if (hideDisliked && isDisliked) shouldHide = true;
+
+                property.classList.toggle('hidden', shouldHide);
+            });
         }
 
         function setPreference(propertyUrl, status) {
@@ -360,6 +474,9 @@
                     const buttons = propertyDiv.querySelectorAll('.action-button');
                     buttons.forEach(btn => btn.classList.remove('active'));
                     propertyDiv.querySelector(`.${status}-button`).classList.add('active');
+                    
+                    // Re-apply filters
+                    applyCurrentFilters();
                 }
             });
         }
@@ -384,30 +501,16 @@
                     const buttons = propertyDiv.querySelectorAll('.action-button');
                     buttons.forEach(btn => btn.classList.remove('active'));
                     propertyDiv.querySelector('.unseen-button').classList.add('active');
+                    
+                    // Re-apply filters
+                    applyCurrentFilters();
                 }
             });
         }
 
-        function toggleFilter(type) {
-            const button = document.getElementById(`hide-${type}`);
-            button.classList.toggle('active');
-            
-            const properties = document.querySelectorAll('.property');
-            properties.forEach(property => {
-                if (type === 'unseen' && !property.classList.contains('liked') && !property.classList.contains('disliked')) {
-                    property.classList.toggle('hidden', button.classList.contains('active'));
-                } else if (property.classList.contains(type)) {
-                    property.classList.toggle('hidden', button.classList.contains('active'));
-                }
-            });
-            
-            // Reset to first page and update pagination
-            showPage(1);
-        }
-
-        // Initialize pagination when page loads
+        // Initialize when page loads
         document.addEventListener('DOMContentLoaded', () => {
-            showPage(1);
+            loadProperties(1);
             updateStatus();
         });
 
@@ -435,7 +538,7 @@
 
     <div class="stats">
         <div class="stat-card">
-            <h2 class="stat-value">{{ total_properties }} Total Properties</h2>
+            <h2 class="stat-value">Loading...</h2>
         </div>
 
         <div id="status" class="status">
@@ -443,80 +546,9 @@
         </div>
     </div>
 
-    {% for location, properties in properties_by_location.items() %}
-    <div class="location-group mb-8">        
-        {% for property in properties %}
-        <div class="property {% if property.preference %}{{ property.preference.status }}{% endif %}" data-url="{{ property.original_url }}" style="display: none;">
-            <div class="property-header">
-                <h2 class="title">
-                    <a href="{{ property.original_url }}" target="_blank">{{ property.title }}</a>
-                </h2>
-                <div class="price">${{ property.total_price|format_number }}</div>
-            </div>
-            <div class="main-content">
-                <div class="images-container">
-                    <div class="images">
-                        {% for image in property.images %}
-                        <img src="{{ image.image_url }}" alt="Property Image">
-                        {% endfor %}
-                    </div>
-                </div>
-                {% if property.google_maps_link %}
-                <div class="map-container">
-                    <div class="map">
-                        <iframe
-                            src="{{ property.google_maps_link|convert_to_embed }}"
-                            width="100%"
-                            height="300"
-                            style="border:0;"
-                            allowfullscreen=""
-                            loading="lazy"
-                            referrerpolicy="no-referrer-when-downgrade">
-                        </iframe>
-                    </div>
-                </div>
-                {% endif %}
-            </div>
-            <div class="attributes">
-                <div class="attribute"><strong>Rent:</strong> ${{ property.price|format_number }}</div>
-                <div class="attribute"><strong>Common Costs:</strong> ${{ property.common_costs|format_number if property.common_costs else 0 }}</div>
-                <div class="attribute"><strong>Total Area:</strong> {{ property.total_area }}m²</div>
-                <div class="attribute"><strong>Floor:</strong> {{ property.floor }} of {{ property.total_floors }}</div>
-                <div class="attribute"><strong>Furnished:</strong> <span class="status-{{ 'yes' if property.furnished else 'no' }}">{{ 'Yes' if property.furnished else 'No' }}</span></div>
-                <div class="attribute"><strong>Gym:</strong> <span class="status-{{ 'yes' if property.has_gym else 'no' }}">{{ 'Yes' if property.has_gym else 'No' }}</span></div>
-                <div class="attribute"><strong>Added:</strong> {{ property.run.started_at.strftime('%Y-%m-%d %H:%M') }}</div>
-                <div class="attribute metro-stations">
-                    <strong>Metro Stations:</strong>
-                    {% if property.metro_stations %}
-                    <ul class="metro-list">
-                        {% for station in property.metro_stations %}
-                        <li class="metro-item">{{ station.name }} ({{ station.walking_minutes }} min)</li>
-                        {% endfor %}
-                    </ul>
-                    {% else %}
-                    <p>No metro stations nearby</p>
-                    {% endif %}
-                </div>
-                
-            </div>
-            <div class="property-actions">
-                <button class="action-button like-button {% if property.preference and property.preference.status == 'liked' %}active{% endif %}"
-                        onclick="setPreference('{{ property.original_url }}', 'liked')">
-                    Like
-                </button>
-                <button class="action-button dislike-button {% if property.preference and property.preference.status == 'disliked' %}active{% endif %}"
-                        onclick="setPreference('{{ property.original_url }}', 'disliked')">
-                    Dislike
-                </button>
-                <button class="action-button unseen-button {% if not property.preference %}active{% endif %}"
-                        onclick="removePreference('{{ property.original_url }}')">
-                    Unseen
-                </button>
-            </div>
-        </div>
-        {% endfor %}
+    <div id="properties-container">
+        <!-- Properties will be loaded here dynamically -->
     </div>
-    {% endfor %}
 
     <div class="pagination">
         <!-- Pagination will be populated by JavaScript -->
