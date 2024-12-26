@@ -244,20 +244,34 @@ def index():
             Property.original_url == preferences_subq.c.property_url
         )
         
-        conditions = []
-        if hide_liked:
-            conditions.append(
-                ~((preferences_subq.c.status == 'liked') & (preferences_subq.c.property_url == Property.original_url))
+        # Build the filter conditions
+        if hide_liked and hide_disliked and hide_unseen:
+            # Hide everything
+            query = query.filter(False)
+        elif hide_liked and hide_disliked:
+            # Show only unseen (no preference)
+            query = query.filter(preferences_subq.c.property_url == None)
+        elif hide_liked and hide_unseen:
+            # Show only disliked
+            query = query.filter(preferences_subq.c.status == 'disliked')
+        elif hide_disliked and hide_unseen:
+            # Show only liked
+            query = query.filter(preferences_subq.c.status == 'liked')
+        elif hide_liked:
+            # Show disliked and unseen
+            query = query.filter(
+                (preferences_subq.c.status == 'disliked') | 
+                (preferences_subq.c.property_url == None)
             )
-        if hide_disliked:
-            conditions.append(
-                ~((preferences_subq.c.status == 'disliked') & (preferences_subq.c.property_url == Property.original_url))
+        elif hide_disliked:
+            # Show liked and unseen
+            query = query.filter(
+                (preferences_subq.c.status == 'liked') | 
+                (preferences_subq.c.property_url == None)
             )
-        if hide_unseen:
-            conditions.append(preferences_subq.c.property_url != None)
-        
-        if conditions:
-            query = query.filter(*conditions)
+        elif hide_unseen:
+            # Show liked and disliked
+            query = query.filter(preferences_subq.c.property_url != None)
     
     # Get total count for pagination
     total_count = query.count()
