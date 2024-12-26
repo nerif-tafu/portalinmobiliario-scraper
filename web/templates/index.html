@@ -449,7 +449,7 @@
     {% if total_pages > 1 %}
     <div class="pagination">
         {% if current_page > 1 %}
-            <a href="?page={{ current_page - 1 }}{% for type in ['liked', 'disliked', 'unseen'] %}{% if vars()['hide_' + type] %}&hide_{{ type }}=true{% endif %}{% endfor %}">&laquo; Previous</a>
+            <a href="?page={{ current_page - 1 }}{% if hide_liked %}&hide_liked=true{% endif %}{% if hide_disliked %}&hide_disliked=true{% endif %}{% if hide_unseen %}&hide_unseen=true{% endif %}">&laquo; Previous</a>
         {% else %}
             <a class="disabled">&laquo; Previous</a>
         {% endif %}
@@ -458,12 +458,12 @@
             {% if page_num == current_page %}
                 <a class="current">{{ page_num }}</a>
             {% else %}
-                <a href="?page={{ page_num }}{% for type in ['liked', 'disliked', 'unseen'] %}{% if vars()['hide_' + type] %}&hide_{{ type }}=true{% endif %}{% endfor %}">{{ page_num }}</a>
+                <a href="?page={{ page_num }}{% if hide_liked %}&hide_liked=true{% endif %}{% if hide_disliked %}&hide_disliked=true{% endif %}{% if hide_unseen %}&hide_unseen=true{% endif %}">{{ page_num }}</a>
             {% endif %}
         {% endfor %}
         
         {% if current_page < total_pages %}
-            <a href="?page={{ current_page + 1 }}{% for type in ['liked', 'disliked', 'unseen'] %}{% if vars()['hide_' + type] %}&hide_{{ type }}=true{% endif %}{% endfor %}">Next &raquo;</a>
+            <a href="?page={{ current_page + 1 }}{% if hide_liked %}&hide_liked=true{% endif %}{% if hide_disliked %}&hide_disliked=true{% endif %}{% if hide_unseen %}&hide_unseen=true{% endif %}">Next &raquo;</a>
         {% else %}
             <a class="disabled">Next &raquo;</a>
         {% endif %}
