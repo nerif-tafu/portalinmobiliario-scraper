@@ -231,9 +231,41 @@ def index():
         .order_by(Run.started_at.desc())
     )
     
+    # Apply filters to the query
+    if hide_liked or hide_disliked or hide_unseen:
+        # Get preferences for filtering
+        preferences_subq = (
+            db.session.query(PropertyPreference.property_url, PropertyPreference.status)
+            .subquery()
+        )
+        
+        query = query.outerjoin(
+            preferences_subq,
+            Property.original_url == preferences_subq.c.property_url
+        )
+        
+        conditions = []
+        if hide_liked:
+            conditions.append(
+                ~((preferences_subq.c.status == 'liked') & (preferences_subq.c.property_url == Property.original_url))
+            )
+        if hide_disliked:
+            conditions.append(
+                ~((preferences_subq.c.status == 'disliked') & (preferences_subq.c.property_url == Property.original_url))
+            )
+        if hide_unseen:
+            conditions.append(preferences_subq.c.property_url != None)
+        
+        if conditions:
+            query = query.filter(*conditions)
+    
     # Get total count for pagination
     total_count = query.count()
     total_pages = (total_count + per_page - 1) // per_page
+    
+    # Ensure current page is valid
+    if page > total_pages:
+        page = total_pages if total_pages > 0 else 1
     
     # Apply pagination
     properties = query.offset((page - 1) * per_page).limit(per_page).all()
