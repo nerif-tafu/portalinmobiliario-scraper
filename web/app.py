@@ -150,38 +150,72 @@ def status():
         'message': message
     })
 
-@app.route('/')
-def index():
-    run_id = request.args.get('run_id')
+@app.route('/api/properties')
+def get_properties():
+    page = request.args.get('page', 1, type=int)
+    per_page = 100
     
-    # Get all properties across all runs, ordered by newest first
-    properties = (
+    # Get paginated properties
+    query = (
         db.session.query(Property)
         .join(Run)
         .order_by(Run.started_at.desc())
-        .all()
     )
     
-    # Get all preferences
+    # Get total count
+    total_count = query.count()
+    
+    # Apply pagination
+    properties = query.offset((page - 1) * per_page).limit(per_page).all()
+    
+    # Get preferences for these properties
+    property_urls = [p.original_url for p in properties]
     preferences = {
-        pref.property_url: pref 
-        for pref in PropertyPreference.query.all()
+        pref.property_url: pref.status 
+        for pref in PropertyPreference.query.filter(
+            PropertyPreference.property_url.in_(property_urls)
+        ).all()
     }
     
-    # Group properties by location
-    properties_by_location = {}
+    # Format properties for JSON response
+    properties_data = []
     for prop in properties:
-        if prop.location not in properties_by_location:
-            properties_by_location[prop.location] = []
-        # Attach preference to property if exists
-        prop.preference = preferences.get(prop.original_url)
-        properties_by_location[prop.location].append(prop)
+        property_data = {
+            'url': prop.original_url,
+            'title': prop.title,
+            'location': prop.location,
+            'price': prop.price,
+            'common_costs': prop.common_costs,
+            'total_price': prop.total_price,
+            'total_area': prop.total_area,
+            'floor': prop.floor,
+            'total_floors': prop.total_floors,
+            'furnished': prop.furnished,
+            'has_gym': prop.has_gym,
+            'google_maps_link': prop.google_maps_link,
+            'created_at': prop.run.started_at.strftime('%Y-%m-%d %H:%M'),
+            'images': [{'url': img.image_url} for img in prop.images],
+            'metro_stations': [
+                {
+                    'name': station.name,
+                    'walking_minutes': station.walking_minutes
+                } for station in prop.metro_stations
+            ],
+            'preference': preferences.get(prop.original_url)
+        }
+        properties_data.append(property_data)
+    
+    return jsonify({
+        'properties': properties_data,
+        'total': total_count,
+        'page': page,
+        'per_page': per_page,
+        'total_pages': (total_count + per_page - 1) // per_page
+    })
 
-    return render_template(
-        'index.html',
-        properties_by_location=properties_by_location,
-        total_properties=len(properties)
-    )
+@app.route('/')
+def index():
+    return render_template('index.html')
 
 @app.route('/property/preference', methods=['POST'])
 def set_preference():
